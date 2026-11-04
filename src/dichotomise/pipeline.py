@@ -183,7 +183,11 @@ def _fingerprint(path: Path) -> tuple[int, int, int, int, int]:
 def _check_sources(fingerprints: dict[Path, tuple[int, int, int, int, int]]) -> None:
     """Stop the run if any source file changed since it was archived."""
     for path, expected in fingerprints.items():
-        if _fingerprint(path) != expected:
+        try:
+            actual = _fingerprint(path)
+        except OSError as error:
+            raise UnsafeSourceError(f"Source is no longer accessible: {path}") from error
+        if actual != expected:
             raise UnsafeSourceError(f"Source changed during processing: {path}")
 
 

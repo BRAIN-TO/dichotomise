@@ -5,8 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+import pydicom
+
 from dichotomise.pydcm.naming import with_new_sop_instance_uid
-from dichotomise.pydcm.relabel import Policy, sanitise_file
+from dichotomise.pydcm.relabel import Policy, _apply_action, format_subject_name, sanitise_file
 from dichotomise.stages.capture import CapturedSubject
 from dichotomise.stages.rectify import (
     RectifyResult,
@@ -27,22 +29,37 @@ class SanitiseResult:
     files: list[Path]
 
 
-def _policy_path(target: Path, policy: Policy) -> Path:
-    """Apply the policy's SeriesDescription to the folder name.
+def _policy_path(
+    target: Path,
+    policy: Policy,
+    description: str,
+    subject_label: str,
+    scan_date: str,
+    replacement_cache: dict[str, str],
+) -> Path:
+    """Apply the policy's SeriesDescription action to the series folder name.
 
-    A folder that is already just the series number (rectify() leaves the
-    description out when the policy withholds it) gets no "NA" suffix.
+    A "removed" description on a folder that is already just the series number
+    (rectify() leaves it out when the policy withholds it) gets no "NA" suffix.
     """
     instruction = policy.actions.get("SeriesDescription", {})
     action = instruction.get("action", "keep")
-    if action == "remove":
-        if "-" not in target.parent.name:
-            return target
-        description = "NA"
-    elif action in ("replace", "add"):
-        description = safe_filename_text(str(instruction.get("value", "")))
-    else:
+    if action == "keep" or (action == "remove" and "-" not in target.parent.name):
         return target
+    dataset = pydicom.Dataset()
+    dataset.SeriesDescription = description
+    _apply_action(
+        dataset,
+        "SeriesDescription",
+        instruction,
+        {
+            "<subject-label>": subject_label,
+            "<subject-name>": format_subject_name(subject_label),
+            "<scan-date>": scan_date,
+        },
+        replacement_cache,
+    )
+    description = safe_filename_text(str(dataset.get("SeriesDescription", "")))
     series = target.parent.name.partition("-")[0]
     return target.parent.parent / f"{series}-{description}" / target.name
 
@@ -99,7 +116,12 @@ def _sanitise(
 
     for metadata in rectify_result.files:
         target = _policy_path(
-            sanitised_dir / metadata.path.relative_to(rectify_result.rectified_dir), policy
+            sanitised_dir / metadata.path.relative_to(rectify_result.rectified_dir),
+            policy,
+            metadata.series_description,
+            subject_label,
+            rectify_result.subject.scan_date,
+            replacement_cache,
         )
         if target.exists():
             raise FileExistsError(f"Sanitised output already exists: {target}")
@@ -176,6 +198,10 @@ def _sanitise_review(
             sanitised_review_dir
             / metadata.path.relative_to(rectify_review_result.review_rectified_dir),
             policy,
+            metadata.series_description,
+            subject_label,
+            scan_date,
+            replacement_cache,
         )
         if target.exists():
             raise FileExistsError(f"Sanitised output already exists: {target}")

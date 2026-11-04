@@ -6,7 +6,7 @@ from pathlib import Path
 import pydicom
 
 from dichotomise.pydcm.read import read_metadata
-from dichotomise.pydcm.relabel import load_policy
+from dichotomise.pydcm.relabel import Policy, load_policy
 from dichotomise.stages.capture import CapturedSubject
 from dichotomise.stages.rectify import RectifyResult, RectifyReviewResult
 from dichotomise.stages.sanitise import sanitise, sanitise_review
@@ -72,6 +72,23 @@ def test_full_policy_does_not_keep_series_description_in_folder(
     )
     assert result.files[0].parent.name == "001-NA"
     assert "private_name" not in str(result.files[0])
+
+
+def test_series_folder_uses_resolved_policy_placeholder(
+    tmp_path: Path, make_dicom_file: Callable[..., Path]
+) -> None:
+    rectified_dir = tmp_path / "rectify"
+    source = make_dicom_file(rectified_dir / "001-private" / "1.dcm")
+    policy = Policy(
+        name="custom",
+        actions={"SeriesDescription": {"action": "replace", "value": "<subject-label>"}},
+    )
+    result = sanitise(
+        RectifyResult(_subject(tmp_path), rectified_dir, [read_metadata(source)]),
+        policy=policy,
+        subject_label="sub-0001",
+    )
+    assert result.files[0].parent.name == "001-sub-0001"
 
 
 def test_sanitise_regenerates_uids_consistently_across_files(
