@@ -49,6 +49,30 @@ def test_sanitise_file_rejects_corrupted_saved_output(
         )
 
 
+def test_sanitise_file_preserves_compressed_pixel_data(
+    tmp_path: Path, make_dicom_file: Callable[..., Path]
+) -> None:
+    from pydicom import encaps, uid
+
+    source = make_dicom_file(tmp_path / "source.dcm")
+    dataset = pydicom.dcmread(source)
+    dataset.file_meta.TransferSyntaxUID = uid.JPEGBaseline8Bit
+    dataset.PixelData = encaps.encapsulate([b"compressed pixels"])
+    dataset["PixelData"].VR = "OB"
+    dataset["PixelData"].is_undefined_length = True
+    dataset.save_as(source)
+    target = tmp_path / "output.dcm"
+    sanitise_file(
+        source,
+        target,
+        load_policy("minimal"),
+        subject_label="sub-0001",
+        scan_date="20260101",
+        replacement_cache={},
+    )
+    assert pydicom.dcmread(target).PixelData == dataset.PixelData
+
+
 def test_generate_default_label_uses_date_and_initials_from_the_patient_name() -> None:
     # Initials are last-name-first, then first-name, matching LAST^FIRST order.
     assert generate_default_label("Doe^Jane^19900101") == "19900101_DJ"
