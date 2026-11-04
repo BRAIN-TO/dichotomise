@@ -92,6 +92,7 @@ def _copy_planned(sources: dict[Path, Path], digests: dict[Path, str]) -> None:
         shutil.copy2(source, target)
         if file_digest(source, digests) != file_digest(target):
             raise FinaliseVerificationError(f"Copied file differs from its source: {target}")
+        digests[target] = digests[source]
 
 
 def _rectify(

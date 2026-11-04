@@ -247,8 +247,7 @@ def finalise_review(
 ) -> Archive | None:
     """Archive the review tree into archives/, or None if there were no review files.
 
-    Archives the sanitised copy when --sanitise was used, so a sanitised
-    run never leaks real PHI through its review archive either; otherwise
+    Archives the sanitised copy when --sanitise was used; otherwise it uses
     the renamed-but-unsanitised review tree. Runs unconditionally and
     independently of --keep-working-files.
     """
@@ -262,6 +261,28 @@ def finalise_review(
     )
 
 
+def _verify_sanitised_review(
+    rectify_review_result: RectifyReviewResult | _RectifyReviewPlan,
+    sanitise_review_result: SanitiseReviewResult,
+    expected_pixels: dict[Path, tuple[object, ...]] | None,
+    expected_identities: dict[Path, tuple[str, str]] | None,
+) -> None:
+    for item, output in zip(rectify_review_result.files, sanitise_review_result.files, strict=True):
+        source = (
+            rectify_review_result.sources[item.path]
+            if isinstance(rectify_review_result, _RectifyReviewPlan)
+            else item.path
+        )
+        if expected_pixels is None:
+            _verify_pixel_data(source, output)
+        else:
+            dataset = pydicom.dcmread(output)
+            if _pixel_fingerprint(dataset) != expected_pixels[output]:
+                raise FinaliseVerificationError(f"Pixel data differs from its source: {output}")
+            if expected_identities is not None:
+                _verify_identity(dataset, output, expected_identities[output])
+
+
 def _finalise_review(
     rectify_review_result: RectifyReviewResult | _RectifyReviewPlan,
     run: Run,
@@ -272,6 +293,7 @@ def _finalise_review(
     on_progress: ProgressCallback | None = None,
     expected_pixels: dict[Path, tuple[object, ...]] | None = None,
     expected_identities: dict[Path, tuple[str, str]] | None = None,
+    verified_digests: dict[Path, str] | None = None,
 ) -> Archive | None:
     if not rectify_review_result.files:
         return None
@@ -291,22 +313,13 @@ def _finalise_review(
             f"Review output files do not match the expected files in {source_dir}"
         )
     if sanitise_review_result is not None:
-        for item, output in zip(
-            rectify_review_result.files, sanitise_review_result.files, strict=True
-        ):
-            source = (
-                rectify_review_result.sources[item.path]
-                if isinstance(rectify_review_result, _RectifyReviewPlan)
-                else item.path
-            )
-            if expected_pixels is None:
-                _verify_pixel_data(source, output)
-            else:
-                dataset = pydicom.dcmread(output)
-                if _pixel_fingerprint(dataset) != expected_pixels[output]:
-                    raise FinaliseVerificationError(f"Pixel data differs from its source: {output}")
-                if expected_identities is not None:
-                    _verify_identity(dataset, output, expected_identities[output])
+        _verify_sanitised_review(
+            rectify_review_result, sanitise_review_result, expected_pixels, expected_identities
+        )
+    elif verified_digests is not None:
+        for path in expected:
+            if file_digest(path) != verified_digests[path]:
+                raise FinaliseVerificationError(f"Review file differs from its source: {path}")
     name = (
         f"{safe_filename_text(subject_label)}_{safe_filename_text(archive_token)}"
         f"_review-archive_{run.timestamp}.tar.gz"

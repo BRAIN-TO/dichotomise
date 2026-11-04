@@ -320,6 +320,7 @@ def _process_subject(
             on_progress=_bind_progress(review_archive_description),
             expected_pixels=expected_pixels,
             expected_identities=expected_identities,
+            verified_digests=source_digests,
         ),
         on_stage,
     )
