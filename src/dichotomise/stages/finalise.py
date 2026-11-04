@@ -2,24 +2,18 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
 import pydicom
-from pydicom.errors import InvalidDicomError
+from pydicom import errors as pydicom_errors
 
-from dichotomise.errors import FinaliseVerificationError
-from dichotomise.pydcm.identify import file_digest
-from dichotomise.pydcm.naming import rectified_path
-from dichotomise.pydcm.read import _metadata_from_dataset, _pixel_fingerprint
+from dichotomise import errors
+from dichotomise.pydcm import identify, naming, read
 from dichotomise.run import Run
+from dichotomise.stages import rectify as rectify_stage
 from dichotomise.stages.capture import CapturedSubject
-from dichotomise.stages.rectify import (
-    RectifyResult,
-    RectifyReviewResult,
-    _RectifyPlan,
-    _RectifyReviewPlan,
-)
 from dichotomise.stages.sanitise import SanitiseResult, SanitiseReviewResult
 from dichotomise.utils.archive import Archive, ProgressCallback, make_tarball
 from dichotomise.utils.text import safe_filename_text
@@ -68,7 +62,7 @@ def _verify_uncompressed_pixel_data(path: Path, dataset: pydicom.Dataset) -> Non
         return
     actual_bytes = len(dataset.PixelData)
     if actual_bytes not in (expected_bytes, expected_bytes + 1):
-        raise FinaliseVerificationError(
+        raise errors.FinaliseVerificationError(
             f"Pixel data length in {path} is {actual_bytes} byte(s); expected {expected_bytes}"
         )
 
@@ -88,22 +82,25 @@ def _verify_output_tree(
     """
     found_files = sorted(p for p in output_dir.rglob("*") if p.is_file())
     if set(found_files) != set(expected_files):
-        raise FinaliseVerificationError(
+        raise errors.FinaliseVerificationError(
             f"Expected {len(expected_files)} file(s) in the finished output, "
             f"but found {len(found_files)} in {output_dir}"
         )
     for path in found_files:
         try:
             dataset = pydicom.dcmread(path, force=False)
-            _metadata_from_dataset(dataset, path)
-        except (InvalidDicomError, OSError) as error:
-            raise FinaliseVerificationError(
+            read._metadata_from_dataset(dataset, path)
+        except (pydicom_errors.InvalidDicomError, OSError) as error:
+            raise errors.FinaliseVerificationError(
                 f"{path} could not be read back after processing; the finished output "
                 "may be corrupt"
             ) from error
         _verify_uncompressed_pixel_data(path, dataset)
-        if expected_pixels is not None and _pixel_fingerprint(dataset) != expected_pixels[path]:
-            raise FinaliseVerificationError(f"Pixel data differs from its source: {path}")
+        if (
+            expected_pixels is not None
+            and read._pixel_fingerprint(dataset) != expected_pixels[path]
+        ):
+            raise errors.FinaliseVerificationError(f"Pixel data differs from its source: {path}")
         if expected_identities is not None:
             _verify_identity(dataset, path, expected_identities[path])
 
@@ -111,7 +108,7 @@ def _verify_output_tree(
 def _verify_identity(dataset: pydicom.Dataset, path: Path, expected: tuple[str, str]) -> None:
     _, sop_uid = expected
     if (str(dataset.get("PatientID", "")), str(dataset.get("SOPInstanceUID", ""))) != expected:
-        raise FinaliseVerificationError(
+        raise errors.FinaliseVerificationError(
             f"Sanitised identity differs from the expected values: {path}"
         )
     file_meta = getattr(dataset, "file_meta", None)
@@ -120,37 +117,18 @@ def _verify_identity(dataset: pydicom.Dataset, path: Path, expected: tuple[str, 
         and "MediaStorageSOPInstanceUID" in file_meta
         and str(file_meta.MediaStorageSOPInstanceUID) != sop_uid
     ):
-        raise FinaliseVerificationError(f"File metadata has an inconsistent SOP UID: {path}")
+        raise errors.FinaliseVerificationError(f"File metadata has an inconsistent SOP UID: {path}")
 
 
 def _verify_pixel_data(source: Path, output: Path) -> None:
     original_dataset = pydicom.dcmread(source)
     finished = pydicom.dcmread(output)
-    for field in (
-        "PixelData",
-        "FloatPixelData",
-        "DoubleFloatPixelData",
-        "Rows",
-        "Columns",
-        "NumberOfFrames",
-        "SamplesPerPixel",
-        "BitsAllocated",
-        "BitsStored",
-        "HighBit",
-        "PixelRepresentation",
-        "PlanarConfiguration",
-        "PhotometricInterpretation",
-    ):
-        if original_dataset.get(field) != finished.get(field):
-            raise FinaliseVerificationError(f"Pixel data differs from its source: {output}")
-    if original_dataset.file_meta.get("TransferSyntaxUID") != finished.file_meta.get(
-        "TransferSyntaxUID"
-    ):
-        raise FinaliseVerificationError(f"Transfer syntax differs from its source: {output}")
+    if read._pixel_fingerprint(original_dataset) != read._pixel_fingerprint(finished):
+        raise errors.FinaliseVerificationError(f"Pixel data differs from its source: {output}")
 
 
 def finalise(
-    rectify_result: RectifyResult,
+    rectify_result: rectify_stage.RectifyResult,
     run: Run,
     *,
     subject_label: str,
@@ -166,6 +144,31 @@ def finalise(
     and a per-run study number. The number prevents one study from replacing
     another when their other filename fields match.
     """
+    sources: dict[Path, Path] | None = None
+    digests: dict[Path, str] | None = None
+    if sanitise_result is None and rectify_result.files:
+        manifest = rectify_result.rectified_dir.parent / ".rectify-provenance.json"
+        try:
+            entries = json.loads(manifest.read_text())
+            expected = {
+                str(item.path.relative_to(rectify_result.rectified_dir))
+                for item in rectify_result.files
+            }
+            if not isinstance(entries, dict) or set(entries) != expected:
+                raise ValueError("Retained manifest does not match the expected files")
+            sources = {}
+            digests = {}
+            for item in rectify_result.files:
+                entry = entries[str(item.path.relative_to(rectify_result.rectified_dir))]
+                source, digest = entry["source"], entry["digest"]
+                if not isinstance(source, str) or not isinstance(digest, str):
+                    raise ValueError("Invalid retained provenance")
+                sources[item.path] = Path(source)
+                digests[Path(source)] = digest
+        except (OSError, ValueError, TypeError, KeyError) as error:
+            raise errors.FinaliseVerificationError(
+                f"Invalid retained provenance: {manifest}"
+            ) from error
     return _finalise(
         rectify_result,
         run,
@@ -173,11 +176,13 @@ def finalise(
         sanitise_result=sanitise_result,
         archive_token=archive_token,
         on_progress=on_progress,
+        retained_sources=sources,
+        source_digests=digests,
     )
 
 
 def _finalise(
-    rectify_result: RectifyResult | _RectifyPlan,
+    rectify_result: rectify_stage.RectifyResult | rectify_stage._RectifyPlan,
     run: Run,
     *,
     subject_label: str,
@@ -185,6 +190,7 @@ def _finalise(
     archive_token: str | None = None,
     on_progress: ProgressCallback | None = None,
     source_digests: dict[Path, str] | None = None,
+    retained_sources: dict[Path, Path] | None = None,
     expected_pixels: dict[Path, tuple[object, ...]] | None = None,
     expected_identities: dict[Path, tuple[str, str]] | None = None,
 ) -> FinaliseResult:
@@ -194,22 +200,28 @@ def _finalise(
     )
     _verify_output_tree(expected_files, source_dir, expected_pixels, expected_identities)
 
-    source_by_target = {
-        rectified_path(rectify_result.rectified_dir, item): item.path
-        for item in rectify_result.subject.files
-    }
+    source_by_target = retained_sources
+    if source_by_target is None:
+        source_by_target = {
+            naming.rectified_path(rectify_result.rectified_dir, item): item.path
+            for item in rectify_result.subject.files
+        }
     if sanitise_result is None:
         for item in rectify_result.files:
             original = source_by_target.get(item.path)
-            if original is not None and file_digest(original, source_digests) != file_digest(
-                item.path
-            ):
-                raise FinaliseVerificationError(f"Copied file differs from its source: {item.path}")
+            if original is None:
+                raise errors.FinaliseVerificationError(f"No source provenance for {item.path}")
+            if source_digests is not None and original not in source_digests:
+                raise errors.FinaliseVerificationError(f"No source digest for {original}")
+            if identify.file_digest(original, source_digests) != identify.file_digest(item.path):
+                raise errors.FinaliseVerificationError(
+                    f"Copied file differs from its source: {item.path}"
+                )
     elif expected_pixels is None:
         for item, output in zip(rectify_result.files, sanitise_result.files, strict=True):
             source = (
                 rectify_result.sources[item.path]
-                if isinstance(rectify_result, _RectifyPlan)
+                if isinstance(rectify_result, rectify_stage._RectifyPlan)
                 else item.path
             )
             _verify_pixel_data(source, output)
@@ -237,7 +249,7 @@ def _finalise(
 
 
 def finalise_review(
-    rectify_review_result: RectifyReviewResult,
+    rectify_review_result: rectify_stage.RectifyReviewResult,
     run: Run,
     *,
     subject_label: str,
@@ -251,6 +263,34 @@ def finalise_review(
     the renamed-but-unsanitised review tree. Runs unconditionally and
     independently of --keep-working-files.
     """
+    if not rectify_review_result.files:
+        return None
+    manifest = rectify_review_result.review_rectified_dir.parent / ".review-rectify-digests.json"
+    try:
+        entries = json.loads(manifest.read_text())
+        expected = {
+            str(item.path.relative_to(rectify_review_result.review_rectified_dir))
+            for item in rectify_review_result.files
+        }
+        if not isinstance(entries, dict) or set(entries) != expected:
+            raise ValueError("Review manifest does not match the expected files")
+        digests = {
+            item.path: entries[
+                str(item.path.relative_to(rectify_review_result.review_rectified_dir))
+            ]
+            for item in rectify_review_result.files
+        }
+    except (OSError, ValueError, TypeError) as error:
+        raise errors.FinaliseVerificationError(f"Invalid review provenance: {manifest}") from error
+    for path, digest in digests.items():
+        try:
+            matches = isinstance(digest, str) and identify.file_digest(path) == digest
+        except OSError as error:
+            raise errors.FinaliseVerificationError(
+                f"Review file is inaccessible: {path}"
+            ) from error
+        if not matches:
+            raise errors.FinaliseVerificationError(f"Review file differs from its source: {path}")
     return _finalise_review(
         rectify_review_result,
         run,
@@ -258,11 +298,12 @@ def finalise_review(
         archive_token=archive_token,
         sanitise_review_result=sanitise_review_result,
         on_progress=on_progress,
+        verified_digests=digests,
     )
 
 
 def _verify_sanitised_review(
-    rectify_review_result: RectifyReviewResult | _RectifyReviewPlan,
+    rectify_review_result: rectify_stage.RectifyReviewResult | rectify_stage._RectifyReviewPlan,
     sanitise_review_result: SanitiseReviewResult,
     expected_pixels: dict[Path, tuple[object, ...]] | None,
     expected_identities: dict[Path, tuple[str, str]] | None,
@@ -270,21 +311,23 @@ def _verify_sanitised_review(
     for item, output in zip(rectify_review_result.files, sanitise_review_result.files, strict=True):
         source = (
             rectify_review_result.sources[item.path]
-            if isinstance(rectify_review_result, _RectifyReviewPlan)
+            if isinstance(rectify_review_result, rectify_stage._RectifyReviewPlan)
             else item.path
         )
         if expected_pixels is None:
             _verify_pixel_data(source, output)
         else:
             dataset = pydicom.dcmread(output)
-            if _pixel_fingerprint(dataset) != expected_pixels[output]:
-                raise FinaliseVerificationError(f"Pixel data differs from its source: {output}")
+            if read._pixel_fingerprint(dataset) != expected_pixels[output]:
+                raise errors.FinaliseVerificationError(
+                    f"Pixel data differs from its source: {output}"
+                )
             if expected_identities is not None:
                 _verify_identity(dataset, output, expected_identities[output])
 
 
 def _finalise_review(
-    rectify_review_result: RectifyReviewResult | _RectifyReviewPlan,
+    rectify_review_result: rectify_stage.RectifyReviewResult | rectify_stage._RectifyReviewPlan,
     run: Run,
     *,
     subject_label: str,
@@ -309,7 +352,7 @@ def _finalise_review(
     )
     found = {path for path in source_dir.rglob("*") if path.is_file()}
     if found != set(expected):
-        raise FinaliseVerificationError(
+        raise errors.FinaliseVerificationError(
             f"Review output files do not match the expected files in {source_dir}"
         )
     if sanitise_review_result is not None:
@@ -318,8 +361,10 @@ def _finalise_review(
         )
     elif verified_digests is not None:
         for path in expected:
-            if file_digest(path) != verified_digests[path]:
-                raise FinaliseVerificationError(f"Review file differs from its source: {path}")
+            if identify.file_digest(path) != verified_digests[path]:
+                raise errors.FinaliseVerificationError(
+                    f"Review file differs from its source: {path}"
+                )
     name = (
         f"{safe_filename_text(subject_label)}_{safe_filename_text(archive_token)}"
         f"_review-archive_{run.timestamp}.tar.gz"

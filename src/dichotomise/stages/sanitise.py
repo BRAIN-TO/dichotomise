@@ -8,6 +8,7 @@ from pathlib import Path
 import pydicom
 
 from dichotomise.pydcm.naming import with_new_sop_instance_uid
+from dichotomise.pydcm.read import DicomMetadata
 from dichotomise.pydcm.relabel import Policy, _apply_action, _sanitise_file, format_subject_name
 from dichotomise.stages.capture import CapturedSubject
 from dichotomise.stages.rectify import (
@@ -114,39 +115,18 @@ def _sanitise(
 ) -> SanitiseResult:
     sanitised_dir = rectify_result.subject.working_dir / "sanitise"
     replacement_cache = {} if replacement_cache is None else replacement_cache
-    files: list[Path] = []
-
-    for metadata in rectify_result.files:
-        target = _policy_path(
-            sanitised_dir / metadata.path.relative_to(rectify_result.rectified_dir),
-            policy,
-            metadata.series_description,
-            subject_label,
-            rectify_result.subject.scan_date,
-            replacement_cache,
-        )
-        if target.exists():
-            raise FileExistsError(f"Sanitised output already exists: {target}")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        new_uid, fingerprint, patient_id = _sanitise_file(
-            (
-                rectify_result.sources[metadata.path]
-                if isinstance(rectify_result, _RectifyPlan)
-                else metadata.path
-            ),
-            target,
-            policy,
-            subject_label=subject_label,
-            scan_date=rectify_result.subject.scan_date,
-            replacement_cache=replacement_cache,
-            verify=expected_pixels is None,
-        )
-        target = _renamed_for_uid(target, metadata.sop_instance_uid, new_uid)
-        files.append(target)
-        if expected_pixels is not None:
-            expected_pixels[target] = fingerprint
-        if expected_identities is not None:
-            expected_identities[target] = (patient_id, new_uid)
+    files = _sanitise_files(
+        rectify_result.files,
+        rectify_result.rectified_dir,
+        sanitised_dir,
+        rectify_result.sources if isinstance(rectify_result, _RectifyPlan) else {},
+        policy,
+        subject_label,
+        rectify_result.subject.scan_date,
+        replacement_cache,
+        expected_pixels,
+        expected_identities,
+    )
 
     return SanitiseResult(
         subject=rectify_result.subject,
@@ -202,11 +182,39 @@ def _sanitise_review(
     if not rectify_review_result.files:
         return None
     sanitised_review_dir = rectify_review_result.review_rectified_dir.parent / "sanitise-review"
+    files = _sanitise_files(
+        rectify_review_result.files,
+        rectify_review_result.review_rectified_dir,
+        sanitised_review_dir,
+        rectify_review_result.sources
+        if isinstance(rectify_review_result, _RectifyReviewPlan)
+        else {},
+        policy,
+        subject_label,
+        scan_date,
+        replacement_cache,
+        expected_pixels,
+        expected_identities,
+    )
+    return SanitiseReviewResult(sanitised_review_dir=sanitised_review_dir, files=files)
+
+
+def _sanitise_files(
+    metadata_files: list[DicomMetadata],
+    source_dir: Path,
+    target_dir: Path,
+    sources: dict[Path, Path],
+    policy: Policy,
+    subject_label: str,
+    scan_date: str,
+    replacement_cache: dict[str, str],
+    expected_pixels: dict[Path, tuple[object, ...]] | None,
+    expected_identities: dict[Path, tuple[str, str]] | None,
+) -> list[Path]:
     files: list[Path] = []
-    for metadata in rectify_review_result.files:
+    for metadata in metadata_files:
         target = _policy_path(
-            sanitised_review_dir
-            / metadata.path.relative_to(rectify_review_result.review_rectified_dir),
+            target_dir / metadata.path.relative_to(source_dir),
             policy,
             metadata.series_description,
             subject_label,
@@ -217,11 +225,7 @@ def _sanitise_review(
             raise FileExistsError(f"Sanitised output already exists: {target}")
         target.parent.mkdir(parents=True, exist_ok=True)
         new_uid, fingerprint, patient_id = _sanitise_file(
-            (
-                rectify_review_result.sources[metadata.path]
-                if isinstance(rectify_review_result, _RectifyReviewPlan)
-                else metadata.path
-            ),
+            sources.get(metadata.path, metadata.path),
             target,
             policy,
             subject_label=subject_label,
@@ -235,4 +239,4 @@ def _sanitise_review(
             expected_pixels[target] = fingerprint
         if expected_identities is not None:
             expected_identities[target] = (patient_id, new_uid)
-    return SanitiseReviewResult(sanitised_review_dir=sanitised_review_dir, files=files)
+    return files

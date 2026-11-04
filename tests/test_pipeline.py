@@ -11,6 +11,7 @@ from pathlib import Path
 import pydicom
 import pytest
 
+import dichotomise.stages.capture as capture_module
 from dichotomise.errors import FinaliseVerificationError, RelabelError, UnsafeSourceError
 from dichotomise.pipeline import run_pipeline
 
@@ -324,6 +325,41 @@ def test_changed_source_is_rejected_after_archiving(
 
     with pytest.raises(UnsafeSourceError):
         run_pipeline(source, tmp_path / "out", on_stage=change_source)
+
+
+def test_source_changed_after_capture_is_rejected_before_archiving(
+    tmp_path: Path, make_dicom_file: Callable[..., Path]
+) -> None:
+    source = tmp_path / "export"
+    scan = make_dicom_file(source / "series" / "1.dcm")
+    out_dir = tmp_path / "out"
+
+    def change_source(status: str, description: str, elapsed: float) -> None:
+        if status == "completed" and description == "Capturing DICOMs by study":
+            with scan.open("ab") as handle:
+                handle.write(b"changed")
+
+    with pytest.raises(UnsafeSourceError):
+        run_pipeline(source, out_dir, on_stage=change_source)
+    assert not list(out_dir.rglob("*.tar.gz"))
+
+
+def test_source_changed_during_capture_is_rejected(
+    tmp_path: Path, make_dicom_file: Callable[..., Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "export"
+    make_dicom_file(source / "series" / "1.dcm")
+    read = capture_module.dicom_read.read_metadata
+
+    def changing_read(path: Path) -> object:
+        metadata = read(path)
+        with path.open("ab") as handle:
+            handle.write(b"changed")
+        return metadata
+
+    monkeypatch.setattr(capture_module.dicom_read, "read_metadata", changing_read)
+    with pytest.raises(UnsafeSourceError):
+        run_pipeline(source, tmp_path / "out")
 
 
 def test_sanitised_pixel_corruption_before_archiving_is_rejected(

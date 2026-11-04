@@ -20,7 +20,7 @@ from dichotomise.pydcm.relabel import (
 )
 from dichotomise.run import Run, start_run
 from dichotomise.stages.audit import AuditResult, _audit_files
-from dichotomise.stages.capture import CapturedSubject, capture
+from dichotomise.stages.capture import CapturedSubject, Fingerprint, _capture, _fingerprint
 from dichotomise.stages.finalise import _finalise, _finalise_review
 from dichotomise.stages.rectify import (
     _plan_rectify,
@@ -154,18 +154,19 @@ def _archive_source_subject(
     run: Run,
     description: str,
     on_archive_progress: ArchiveProgressCallback | None,
-) -> tuple[Archive, dict[Path, str], dict[Path, tuple[int, int, int, int, int]]]:
+    fingerprints: dict[Path, Fingerprint],
+) -> tuple[Archive, dict[Path, str]]:
     """Archive one captured study before it is audited or transformed."""
     on_progress = (
         (lambda done, total: on_archive_progress(description, done, total))
         if on_archive_progress is not None
         else None
     )
-    fingerprints = {item.path: _fingerprint(item.path) for item in subject.files}
+    _check_sources(fingerprints)  # nothing may have changed since capture read the headers
     digests: dict[Path, str] = {}
     archive = _source_archive(subject, run, on_progress=on_progress, source_digests=digests)
     _check_sources(fingerprints)
-    return archive, digests, fingerprints
+    return archive, digests
 
 
 def _source_map_path(source_archive_path: Path) -> Path:
@@ -174,13 +175,7 @@ def _source_map_path(source_archive_path: Path) -> Path:
     return source_archive_path.with_name(stem.replace("_source-archive_", "_source-map_") + ".csv")
 
 
-def _fingerprint(path: Path) -> tuple[int, int, int, int, int]:
-    """Identify a file's on-disk state, so a later change can be detected."""
-    stat = path.stat()
-    return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
-
-
-def _check_sources(fingerprints: dict[Path, tuple[int, int, int, int, int]]) -> None:
+def _check_sources(fingerprints: dict[Path, Fingerprint]) -> None:
     """Stop the run if any source file changed since it was archived."""
     for path, expected in fingerprints.items():
         try:
@@ -200,7 +195,7 @@ def _process_subject(
     sanitise_level: str,
     policy: Policy | None,
     source_digests: dict[Path, str],
-    source_fingerprints: dict[Path, tuple[int, int, int, int, int]],
+    source_fingerprints: dict[Path, Fingerprint],
     used_output_tokens: set[str],
     resolved_label: str,
     keep_working_files: bool,
@@ -257,12 +252,15 @@ def _process_subject(
 
     _check_sources(source_fingerprints)
     direct = sanitise_requested and not keep_working_files
+    retained_sources: dict[Path, Path] = {}  # rectified file -> its source, for finalise to verify
     rectify_result = _run_stage(
         f"{subject_prefix}: rectifying retained files",
         lambda: (
             _plan_rectify(sift_result, source_digests, describe_series=describe_series)
             if direct
-            else _rectify(sift_result, source_digests, describe_series=describe_series)
+            else _rectify(
+                sift_result, source_digests, retained_sources, describe_series=describe_series
+            )
         ),
         on_stage,
     )
@@ -346,6 +344,7 @@ def _process_subject(
             archive_token=output_token,
             on_progress=_bind_progress(finalise_description),
             source_digests=source_digests,
+            retained_sources=retained_sources,
             expected_pixels=expected_pixels,
             expected_identities=expected_identities,
         ),
@@ -431,8 +430,8 @@ def run_pipeline(
     if on_run_start is not None:
         on_run_start(run)
     try:
-        subjects = _run_stage(
-            "Capturing DICOMs by study", lambda: capture(source_dir, run), on_stage
+        subjects, captured_fingerprints = _run_stage(
+            "Capturing DICOMs by study", lambda: _capture(source_dir, run), on_stage
         )
         if on_info is not None:
             total_files = sum(len(subject.files) for subject in subjects)
@@ -467,7 +466,10 @@ def run_pipeline(
         policy = load_policy(sanitise_level) if sanitise_requested else None
         for subject, resolved_label in zip(subjects, labels, strict=True):
             archive_source_description = f"Study {subject.output_number}: archiving source DICOMs"
-            source_archive_result, source_digests, source_fingerprints = _run_stage(
+            source_fingerprints = {
+                item.path: captured_fingerprints[item.path] for item in subject.files
+            }
+            source_archive_result, source_digests = _run_stage(
                 archive_source_description,
                 partial(
                     _archive_source_subject,
@@ -475,6 +477,7 @@ def run_pipeline(
                     run,
                     archive_source_description,
                     on_archive_progress,
+                    source_fingerprints,
                 ),
                 on_stage,
             )

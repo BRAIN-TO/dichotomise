@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from pathlib import Path
+
+import pydicom
 import pytest
 from pydicom.dataset import Dataset
 
@@ -10,8 +14,39 @@ from dichotomise.pydcm.relabel import (
     generate_default_label,
     load_policy,
     normalise_numeric_label,
+    sanitise_file,
     validate_label,
 )
+
+
+@pytest.mark.parametrize("field", ["PixelData", "PatientID", "SOPInstanceUID"])
+def test_sanitise_file_rejects_corrupted_saved_output(
+    tmp_path: Path,
+    make_dicom_file: Callable[..., Path],
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+) -> None:
+    source = make_dicom_file(tmp_path / "source.dcm", PixelData=b"\x01\x02")
+    target = tmp_path / "output.dcm"
+    save = Dataset.save_as
+
+    def corrupt(dataset: Dataset, filename: Path, *args: object, **kwargs: object) -> None:
+        save(dataset, filename, *args, **kwargs)
+        saved = pydicom.dcmread(filename)
+        value = b"\x03\x04" if field == "PixelData" else "1.2.3.4"
+        setattr(saved, field, value)
+        save(saved, filename)
+
+    monkeypatch.setattr(Dataset, "save_as", corrupt)
+    with pytest.raises(RelabelError):
+        sanitise_file(
+            source,
+            target,
+            load_policy("minimal"),
+            subject_label="sub-0001",
+            scan_date="20260101",
+            replacement_cache={},
+        )
 
 
 def test_generate_default_label_uses_date_and_initials_from_the_patient_name() -> None:
@@ -203,6 +238,26 @@ def test_policy_applies_to_nested_datasets_and_removes_sequences() -> None:
     )
     assert str(nested.PatientName) == "Anonymous"
     assert "AcquisitionContextSequence" not in dataset
+
+
+def test_new_code_sequence_is_not_modified_by_nested_actions() -> None:
+    dataset = _dataset()
+    policy = Policy(
+        name="codes",
+        actions={
+            "CodeMeaning": {"action": "replace", "value": "changed"},
+            "DeidentificationMethodCodeSequence": {
+                "action": "add_code_sequence",
+                "value": [
+                    {"CodeValue": "1", "CodingSchemeDesignator": "DCM", "CodeMeaning": "original"}
+                ],
+            },
+        },
+    )
+    apply_policy(
+        dataset, policy, subject_label="sub-0001", scan_date="20260101", replacement_cache={}
+    )
+    assert dataset.DeidentificationMethodCodeSequence[0].CodeMeaning == "original"
 
 
 def test_regeneration_preserves_class_uids_and_remaps_known_references() -> None:

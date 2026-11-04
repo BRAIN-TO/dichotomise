@@ -546,5 +546,19 @@ def _sanitise_file(
     )
     dataset.save_as(target_path)
     if verify:
-        pydicom.dcmread(target_path, stop_before_pixels=True)
+        saved = pydicom.dcmread(target_path)
+        if _pixel_fingerprint(saved) != fingerprint:
+            raise RelabelError(f"Pixel data differs after sanitisation: {target_path}")
+        for field in ("PatientID", "SOPInstanceUID"):
+            if str(saved.get(field, "")) != str(dataset.get(field, "")):
+                raise RelabelError(f"{field} differs after sanitisation: {target_path}")
+        saved_meta = getattr(saved, "file_meta", None)
+        expected_meta = getattr(dataset, "file_meta", None)
+        if (
+            saved_meta is not None
+            and expected_meta is not None
+            and str(saved_meta.get("MediaStorageSOPInstanceUID", ""))
+            != str(expected_meta.get("MediaStorageSOPInstanceUID", ""))
+        ):
+            raise RelabelError(f"File metadata differs after sanitisation: {target_path}")
     return str(dataset.get("SOPInstanceUID", "")), fingerprint, str(dataset.get("PatientID", ""))

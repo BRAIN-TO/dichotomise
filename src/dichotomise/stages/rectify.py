@@ -10,7 +10,11 @@ copies the plan, so the sanitise stage can write straight from the source files.
 
 from __future__ import annotations
 
+import json
+import os
 import shutil
+import tempfile
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -96,10 +100,27 @@ def _copy_planned(sources: dict[Path, Path], digests: dict[Path, str]) -> None:
 
 
 def _rectify(
-    sift_result: SiftResult, digests: dict[Path, str], *, describe_series: bool = True
+    sift_result: SiftResult,
+    digests: dict[Path, str],
+    sources: dict[Path, Path] | None = None,
+    *,
+    describe_series: bool = True,
 ) -> RectifyResult:
     plan = _plan_rectify(sift_result, digests, describe_series=describe_series)
     _copy_planned(plan.sources, digests)
+    if plan.sources:
+        _write_manifest(
+            plan.rectified_dir.parent / ".rectify-provenance.json",
+            {
+                str(target.relative_to(plan.rectified_dir)): {
+                    "source": str(source),
+                    "digest": digests[source],
+                }
+                for target, source in plan.sources.items()
+            },
+        )
+    if sources is not None:
+        sources.update(plan.sources)
     return RectifyResult(
         plan.subject,
         plan.rectified_dir,
@@ -190,6 +211,12 @@ def _rectify_review(
 ) -> RectifyReviewResult:
     plan = _plan_rectify_review(sift_result, digests, describe_series=describe_series)
     _copy_planned(plan.sources, digests)
+    if plan.sources:
+        manifest = plan.review_rectified_dir.parent / ".review-rectify-digests.json"
+        entries = {
+            str(path.relative_to(plan.review_rectified_dir)): digests[path] for path in plan.sources
+        }
+        _write_manifest(manifest, entries)
     return RectifyReviewResult(
         plan.review_rectified_dir,
         plan.files,
@@ -197,3 +224,19 @@ def _rectify_review(
         plan.merged_identical_count,
         plan.target_by_source,
     )
+
+
+def _write_manifest(path: Path, entries: Mapping[str, object]) -> None:
+    """Write a provenance record atomically, so a crash never leaves a half-written one."""
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", dir=path.parent, prefix=".provenance-", delete=False
+        ) as handle:
+            temporary = Path(handle.name)
+            json.dump(entries, handle)
+            handle.flush()
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)

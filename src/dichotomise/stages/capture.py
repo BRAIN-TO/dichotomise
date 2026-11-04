@@ -7,8 +7,9 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from dichotomise.errors import NoDicomFilesFoundError
-from dichotomise.pydcm.read import DicomMetadata, iter_dicom_metadata
+from dichotomise.errors import NoDicomFilesFoundError, UnsafeSourceError
+from dichotomise.pydcm import read as dicom_read
+from dichotomise.pydcm.read import DicomMetadata
 from dichotomise.run import Run
 from dichotomise.utils.fs import reject_symlinks
 from dichotomise.utils.text import safe_filename_text
@@ -84,9 +85,41 @@ def capture(source_dir: Path, run: Run) -> list[CapturedSubject]:
     split correctly. A file that cannot be read as DICOM is left out of
     every subject's file list.
     """
-    reject_symlinks(source_dir)
+    return _capture(source_dir, run)[0]
 
-    files_by_subject = group_by_subject(iter_dicom_metadata(source_dir))
+
+Fingerprint = tuple[int, int, int, int, int]
+
+
+def _fingerprint(path: Path) -> Fingerprint:
+    """Identify a file's on-disk state, so a later change can be detected."""
+    stat = path.stat()
+    return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
+
+
+def _fingerprints(paths: list[Path]) -> dict[Path, Fingerprint]:
+    try:
+        return {path: _fingerprint(path) for path in paths}
+    except OSError as error:
+        raise UnsafeSourceError(f"Source is no longer accessible: {error.filename}") from error
+
+
+def _capture(source_dir: Path, run: Run) -> tuple[list[CapturedSubject], dict[Path, Fingerprint]]:
+    """capture(), plus a fingerprint of every DICOM source file for later change checks.
+
+    Every file is fingerprinted before its header is read and again afterwards,
+    so one that changes or disappears mid-capture stops the run instead of
+    being half-read.
+    """
+    reject_symlinks(source_dir)
+    paths = sorted(path for path in source_dir.rglob("*") if path.is_file())
+    before = _fingerprints(paths)
+    metadata = list(dicom_read.iter_dicom_metadata(source_dir))
+    after = _fingerprints(paths)
+    for path in paths:
+        if before[path] != after[path]:
+            raise UnsafeSourceError(f"Source changed during capture: {path}")
+    files_by_subject = group_by_subject(metadata)
 
     if not files_by_subject:
         raise NoDicomFilesFoundError(f"No DICOM files were found under {source_dir}")
@@ -104,4 +137,4 @@ def capture(source_dir: Path, run: Run) -> list[CapturedSubject]:
                 output_number=output_number,
             )
         )
-    return captured
+    return captured, {item.path: before[item.path] for item in metadata}

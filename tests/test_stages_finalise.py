@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -11,9 +13,11 @@ from dichotomise.pydcm.read import read_metadata
 from dichotomise.run import start_run
 from dichotomise.stages.capture import CapturedSubject
 from dichotomise.stages.finalise import finalise, finalise_review
-from dichotomise.stages.rectify import RectifyResult, RectifyReviewResult
+from dichotomise.stages.rectify import RectifyResult, RectifyReviewResult, rectify, rectify_review
 from dichotomise.stages.sanitise import SanitiseResult, SanitiseReviewResult
+from dichotomise.stages.sift import ReviewFile, SiftResult
 from dichotomise.utils.archive import verify_archive
+from dichotomise.utils.fs import file_digest
 
 
 def _subject(working_dir: Path) -> CapturedSubject:
@@ -29,15 +33,25 @@ def _subject(working_dir: Path) -> CapturedSubject:
     )
 
 
+def _review_manifest(result: RectifyReviewResult) -> None:
+    manifest = result.review_rectified_dir.parent / ".review-rectify-digests.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                str(item.path.relative_to(result.review_rectified_dir)): file_digest(item.path)
+                for item in result.files
+            }
+        )
+    )
+
+
 def test_finalise_archives_the_rectified_tree_when_not_sanitising(
     tmp_path: Path, make_dicom_file: Callable[..., Path]
 ) -> None:
-    rectified_dir = tmp_path / "rectify"
-    file_a = make_dicom_file(rectified_dir / "021-DWI" / "1.dcm")
-    subject = _subject(tmp_path / "capture")
-    rectify_result = RectifyResult(
-        subject=subject, rectified_dir=rectified_dir, files=[read_metadata(file_a)]
-    )
+    file_a = make_dicom_file(tmp_path / "source" / "1.dcm")
+    metadata = read_metadata(file_a)
+    subject = replace(_subject(tmp_path / "capture"), files=[metadata])
+    rectify_result = rectify(SiftResult(subject, [metadata], []))
     run = start_run(tmp_path / "out", now=datetime(2026, 9, 22, 14, 30, 12, tzinfo=UTC))
 
     result = finalise(rectify_result, run, subject_label="sub-01", archive_token="a1b2c3")
@@ -137,6 +151,7 @@ def test_finalise_review_archives_the_renamed_review_tree_when_not_sanitised(
         files=[read_metadata(file_a)],
         collision_count=0,
     )
+    _review_manifest(rectify_review_result)
     run = start_run(tmp_path / "out", now=datetime(2026, 9, 22, 14, 30, 12, tzinfo=UTC))
 
     result = finalise_review(
@@ -164,6 +179,7 @@ def test_finalise_review_archives_the_sanitised_tree_when_sanitised(
         files=[read_metadata(raw_file)],
         collision_count=0,
     )
+    _review_manifest(rectify_review_result)
     sanitised_review_dir = tmp_path / "sanitise-review"
     sanitised_file = make_dicom_file(sanitised_review_dir / "021-DWI" / "1.dcm")
     sanitise_review_result = SanitiseReviewResult(
@@ -199,6 +215,7 @@ def test_finalise_review_rejects_changed_pixels(
     original = make_dicom_file(original_dir / "1.dcm", PixelData=b"\x01\x02")
     changed = make_dicom_file(sanitised_dir / "1.dcm", PixelData=b"\x03\x04")
     review = RectifyReviewResult(original_dir, [read_metadata(original)], 0)
+    _review_manifest(review)
     sanitised = SanitiseReviewResult(sanitised_dir, [changed])
     with pytest.raises(FinaliseVerificationError, match="Pixel data differs"):
         finalise_review(
@@ -208,3 +225,78 @@ def test_finalise_review_rejects_changed_pixels(
             archive_token="a1b2c3",
             sanitise_review_result=sanitised,
         )
+
+
+def test_standalone_review_rejects_changes_after_rectification(
+    tmp_path: Path, make_dicom_file: Callable[..., Path]
+) -> None:
+    source = make_dicom_file(tmp_path / "source" / "1.dcm")
+    metadata = read_metadata(source)
+    subject = _subject(tmp_path / "working")
+    review = rectify_review(SiftResult(subject, [], [ReviewFile(metadata, "duplicate")]))
+    with review.files[0].path.open("ab") as handle:
+        handle.write(b"changed")
+    with pytest.raises(FinaliseVerificationError, match="Review file differs"):
+        finalise_review(
+            review, start_run(tmp_path / "out"), subject_label="sub-01", archive_token="x"
+        )
+
+
+def test_standalone_review_requires_provenance(
+    tmp_path: Path, make_dicom_file: Callable[..., Path]
+) -> None:
+    source = make_dicom_file(tmp_path / "review" / "1.dcm")
+    review = RectifyReviewResult(source.parent, [read_metadata(source)], 0)
+    with pytest.raises(FinaliseVerificationError, match="Invalid review provenance"):
+        finalise_review(
+            review, start_run(tmp_path / "out"), subject_label="sub-01", archive_token="x"
+        )
+
+
+def test_standalone_review_archives_verified_rectification(
+    tmp_path: Path, make_dicom_file: Callable[..., Path]
+) -> None:
+    source = make_dicom_file(tmp_path / "source" / "1.dcm")
+    review = rectify_review(
+        SiftResult(
+            _subject(tmp_path / "working"), [], [ReviewFile(read_metadata(source), "duplicate")]
+        )
+    )
+    result = finalise_review(
+        review, start_run(tmp_path / "out"), subject_label="sub-01", archive_token="x"
+    )
+    assert result is not None
+    import tarfile
+
+    with tarfile.open(result.path) as archive:
+        assert all("digests" not in entry.name for entry in archive.getmembers())
+
+
+@pytest.mark.parametrize("manifest_data", [None, "not-json", "{}"])
+def test_standalone_review_rejects_missing_or_invalid_manifest(
+    tmp_path: Path, make_dicom_file: Callable[..., Path], manifest_data: str | None
+) -> None:
+    source = make_dicom_file(tmp_path / "source" / "1.dcm")
+    review = rectify_review(
+        SiftResult(
+            _subject(tmp_path / "working"), [], [ReviewFile(read_metadata(source), "duplicate")]
+        )
+    )
+    manifest = review.review_rectified_dir.parent / ".review-rectify-digests.json"
+    if manifest_data is None:
+        manifest.unlink()
+    else:
+        manifest.write_text(manifest_data)
+    with pytest.raises(FinaliseVerificationError, match="Invalid review provenance"):
+        finalise_review(
+            review, start_run(tmp_path / "out"), subject_label="sub-01", archive_token="x"
+        )
+
+
+def test_standalone_retained_finalisation_requires_provenance(
+    tmp_path: Path, make_dicom_file: Callable[..., Path]
+) -> None:
+    file = make_dicom_file(tmp_path / "rectify" / "1.dcm")
+    result = RectifyResult(_subject(tmp_path), file.parent, [read_metadata(file)])
+    with pytest.raises(FinaliseVerificationError, match="Invalid retained provenance"):
+        finalise(result, start_run(tmp_path / "out"), subject_label="sub-01")
