@@ -278,6 +278,7 @@ def _process_subject(
 
     sanitise_result = None
     sanitise_review_result = None
+    expected_pixels: dict[Path, tuple[object, ...]] | None = {} if policy is not None else None
     if policy is not None:
         replacement_cache: dict[str, str] = {}
         sanitise_result = _run_stage(
@@ -287,6 +288,7 @@ def _process_subject(
                 policy=policy,
                 subject_label=subject_label,
                 replacement_cache=replacement_cache,
+                expected_pixels=expected_pixels,
             ),
             on_stage,
         )
@@ -298,6 +300,7 @@ def _process_subject(
                 subject_label=subject_label,
                 scan_date=subject.scan_date,
                 replacement_cache=replacement_cache,
+                expected_pixels=expected_pixels,
             ),
             on_stage,
         )
@@ -312,6 +315,7 @@ def _process_subject(
             archive_token=output_token,
             sanitise_review_result=sanitise_review_result,
             on_progress=_bind_progress(review_archive_description),
+            expected_pixels=expected_pixels,
         ),
         on_stage,
     )
@@ -337,6 +341,7 @@ def _process_subject(
             archive_token=output_token,
             on_progress=_bind_progress(finalise_description),
             source_digests=source_digests,
+            expected_pixels=expected_pixels,
         ),
         on_stage,
     )

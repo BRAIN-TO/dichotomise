@@ -8,9 +8,10 @@ import tarfile
 from collections.abc import Callable
 from pathlib import Path
 
+import pydicom
 import pytest
 
-from dichotomise.errors import RelabelError, UnsafeSourceError
+from dichotomise.errors import FinaliseVerificationError, RelabelError, UnsafeSourceError
 from dichotomise.pipeline import run_pipeline
 
 
@@ -280,6 +281,24 @@ def test_changed_source_is_rejected_after_archiving(
 
     with pytest.raises(UnsafeSourceError):
         run_pipeline(source, tmp_path / "out", on_stage=change_source)
+
+
+def test_sanitised_pixel_corruption_before_archiving_is_rejected(
+    tmp_path: Path, make_dicom_file: Callable[..., Path]
+) -> None:
+    source = tmp_path / "export"
+    make_dicom_file(source / "series" / "1.dcm", PixelData=b"\x01\x02")
+    out_dir = tmp_path / "out"
+
+    def corrupt_output(status: str, description: str, elapsed: float) -> None:
+        if status == "started" and description.endswith("creating verified archive"):
+            output = next(out_dir.rglob("working/*/sanitise/**/*.dcm"))
+            dataset = pydicom.dcmread(output)
+            dataset.PixelData = b"\x03\x04"
+            dataset.save_as(output)
+
+    with pytest.raises(FinaliseVerificationError, match="Pixel data differs"):
+        run_pipeline(source, out_dir, sanitise_requested=True, on_stage=corrupt_output)
 
 
 def test_run_pipeline_sanitise_numerical_mode_without_subject_id_raises(

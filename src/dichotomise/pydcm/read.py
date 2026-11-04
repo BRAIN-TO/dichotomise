@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import multiprocessing
 import os
 from collections.abc import Callable, Iterator
@@ -44,6 +45,28 @@ class DicomMetadata:
     mixed_echoes: bool = False
     inversion_time: float | None = None
     is_asl: bool = False
+
+
+def _pixel_fingerprint(dataset: pydicom.Dataset) -> tuple[object, ...]:
+    payloads = []
+    for field in ("PixelData", "FloatPixelData", "DoubleFloatPixelData"):
+        value = dataset.get(field)
+        payloads.append(None if value is None else (len(value), hashlib.sha256(value).digest()))
+    fields = (
+        "Rows",
+        "Columns",
+        "NumberOfFrames",
+        "SamplesPerPixel",
+        "BitsAllocated",
+        "BitsStored",
+        "HighBit",
+        "PixelRepresentation",
+        "PlanarConfiguration",
+        "PhotometricInterpretation",
+    )
+    file_meta = getattr(dataset, "file_meta", None)
+    transfer_syntax = None if file_meta is None else file_meta.get("TransferSyntaxUID")
+    return (*payloads, str(transfer_syntax), *(str(dataset.get(field)) for field in fields))
 
 
 def _optional_number(value: object, convert: Callable[[Any], int | float]) -> Any:

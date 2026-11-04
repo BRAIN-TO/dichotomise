@@ -11,7 +11,7 @@ from pydicom.errors import InvalidDicomError
 from dichotomise.errors import FinaliseVerificationError
 from dichotomise.pydcm.identify import file_digest
 from dichotomise.pydcm.naming import rectified_path
-from dichotomise.pydcm.read import _metadata_from_dataset
+from dichotomise.pydcm.read import _metadata_from_dataset, _pixel_fingerprint
 from dichotomise.run import Run
 from dichotomise.stages.capture import CapturedSubject
 from dichotomise.stages.rectify import (
@@ -73,7 +73,11 @@ def _verify_uncompressed_pixel_data(path: Path, dataset: pydicom.Dataset) -> Non
         )
 
 
-def _verify_output_tree(expected_files: list[Path], output_dir: Path) -> None:
+def _verify_output_tree(
+    expected_files: list[Path],
+    output_dir: Path,
+    expected_pixels: dict[Path, tuple[object, ...]] | None = None,
+) -> None:
     """Independently re-check the finished output tree before it is archived.
 
     This deliberately re-reads the output tree from disk rather than trusting
@@ -97,6 +101,8 @@ def _verify_output_tree(expected_files: list[Path], output_dir: Path) -> None:
                 "may be corrupt"
             ) from error
         _verify_uncompressed_pixel_data(path, dataset)
+        if expected_pixels is not None and _pixel_fingerprint(dataset) != expected_pixels[path]:
+            raise FinaliseVerificationError(f"Pixel data differs from its source: {path}")
 
 
 def _verify_pixel_data(source: Path, output: Path) -> None:
@@ -161,12 +167,13 @@ def _finalise(
     archive_token: str | None = None,
     on_progress: ProgressCallback | None = None,
     source_digests: dict[Path, str] | None = None,
+    expected_pixels: dict[Path, tuple[object, ...]] | None = None,
 ) -> FinaliseResult:
     source_dir = sanitise_result.sanitised_dir if sanitise_result else rectify_result.rectified_dir
     expected_files = (
         sanitise_result.files if sanitise_result else [item.path for item in rectify_result.files]
     )
-    _verify_output_tree(expected_files, source_dir)
+    _verify_output_tree(expected_files, source_dir, expected_pixels)
 
     source_by_target = {
         rectified_path(rectify_result.rectified_dir, item): item.path
@@ -179,7 +186,7 @@ def _finalise(
                 item.path
             ):
                 raise FinaliseVerificationError(f"Copied file differs from its source: {item.path}")
-    else:
+    elif expected_pixels is None:
         for item, output in zip(rectify_result.files, sanitise_result.files, strict=True):
             source = (
                 rectify_result.sources[item.path]
@@ -244,6 +251,7 @@ def _finalise_review(
     archive_token: str,
     sanitise_review_result: SanitiseReviewResult | None = None,
     on_progress: ProgressCallback | None = None,
+    expected_pixels: dict[Path, tuple[object, ...]] | None = None,
 ) -> Archive | None:
     if not rectify_review_result.files:
         return None
@@ -271,7 +279,10 @@ def _finalise_review(
                 if isinstance(rectify_review_result, _RectifyReviewPlan)
                 else item.path
             )
-            _verify_pixel_data(source, output)
+            if expected_pixels is None:
+                _verify_pixel_data(source, output)
+            elif _pixel_fingerprint(pydicom.dcmread(output)) != expected_pixels[output]:
+                raise FinaliseVerificationError(f"Pixel data differs from its source: {output}")
     name = (
         f"{safe_filename_text(subject_label)}_{safe_filename_text(archive_token)}"
         f"_review-archive_{run.timestamp}.tar.gz"

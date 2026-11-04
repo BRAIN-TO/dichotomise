@@ -21,6 +21,7 @@ from pydicom.uid import generate_uid
 
 from dichotomise.errors import PolicyNotFoundError, PolicyValidationError, RelabelError
 from dichotomise.pydcm.names import generate_name
+from dichotomise.pydcm.read import _pixel_fingerprint
 
 _POLICIES_DIR = Path(__file__).parent / "policies"
 
@@ -512,7 +513,30 @@ def sanitise_file(
     function owns all DICOM-specific file handling. Returns the saved file's
     SOP Instance UID, which the policy may have regenerated.
     """
+    uid, _ = _sanitise_file(
+        source_path,
+        target_path,
+        policy,
+        subject_label=subject_label,
+        scan_date=scan_date,
+        replacement_cache=replacement_cache,
+        verify=True,
+    )
+    return uid
+
+
+def _sanitise_file(
+    source_path: Path,
+    target_path: Path,
+    policy: Policy,
+    *,
+    subject_label: str,
+    scan_date: str,
+    replacement_cache: MutableMapping[str, str],
+    verify: bool,
+) -> tuple[str, tuple[object, ...]]:
     dataset = pydicom.dcmread(source_path)
+    fingerprint = _pixel_fingerprint(dataset)
     apply_policy(
         dataset,
         policy,
@@ -521,5 +545,6 @@ def sanitise_file(
         replacement_cache=replacement_cache,
     )
     dataset.save_as(target_path)
-    pydicom.dcmread(target_path, stop_before_pixels=True)
-    return str(dataset.get("SOPInstanceUID", ""))
+    if verify:
+        pydicom.dcmread(target_path, stop_before_pixels=True)
+    return str(dataset.get("SOPInstanceUID", "")), fingerprint
