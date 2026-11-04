@@ -21,8 +21,13 @@ from dichotomise.pydcm.relabel import (
 from dichotomise.run import Run, start_run
 from dichotomise.stages.audit import AuditResult, _audit_files
 from dichotomise.stages.capture import CapturedSubject, capture
-from dichotomise.stages.finalise import _finalise, finalise_review
-from dichotomise.stages.rectify import _rectify, _rectify_review
+from dichotomise.stages.finalise import _finalise, _finalise_review
+from dichotomise.stages.rectify import (
+    _plan_rectify,
+    _plan_rectify_review,
+    _rectify,
+    _rectify_review,
+)
 from dichotomise.stages.reports import (
     pseudonymised_audit,
     pseudonymous_source_names,
@@ -35,7 +40,7 @@ from dichotomise.stages.reports import (
     write_source_manifest,
     write_source_map,
 )
-from dichotomise.stages.sanitise import sanitise, sanitise_review
+from dichotomise.stages.sanitise import _sanitise, _sanitise_review
 from dichotomise.stages.sift import sift
 from dichotomise.stages.source_archive import _source_archive
 from dichotomise.utils.archive import Archive
@@ -247,14 +252,23 @@ def _process_subject(
         write_source_map(source_map_path, sift_result, names)
 
     _check_sources(source_fingerprints)
+    direct = sanitise_requested and not keep_working_files
     rectify_result = _run_stage(
         f"{subject_prefix}: rectifying retained files",
-        lambda: _rectify(sift_result, source_digests, describe_series=describe_series),
+        lambda: (
+            _plan_rectify(sift_result, source_digests, describe_series=describe_series)
+            if direct
+            else _rectify(sift_result, source_digests, describe_series=describe_series)
+        ),
         on_stage,
     )
     rectify_review_result = _run_stage(
         f"{subject_prefix}: renaming review files",
-        lambda: _rectify_review(sift_result, source_digests, describe_series=describe_series),
+        lambda: (
+            _plan_rectify_review(sift_result, source_digests, describe_series=describe_series)
+            if direct
+            else _rectify_review(sift_result, source_digests, describe_series=describe_series)
+        ),
         on_stage,
     )
 
@@ -264,7 +278,7 @@ def _process_subject(
         replacement_cache: dict[str, str] = {}
         sanitise_result = _run_stage(
             f"{subject_prefix}: sanitising files",
-            lambda: sanitise(
+            lambda: _sanitise(
                 rectify_result,
                 policy=policy,
                 subject_label=subject_label,
@@ -274,7 +288,7 @@ def _process_subject(
         )
         sanitise_review_result = _run_stage(
             f"{subject_prefix}: sanitising review files",
-            lambda: sanitise_review(
+            lambda: _sanitise_review(
                 rectify_review_result,
                 policy=policy,
                 subject_label=subject_label,
@@ -287,7 +301,7 @@ def _process_subject(
     review_archive_description = f"{subject_prefix}: archiving review files"
     review_archive = _run_stage(
         review_archive_description,
-        lambda: finalise_review(
+        lambda: _finalise_review(
             rectify_review_result,
             run,
             subject_label=subject_label,

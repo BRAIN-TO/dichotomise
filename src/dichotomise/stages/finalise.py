@@ -14,7 +14,12 @@ from dichotomise.pydcm.naming import rectified_path
 from dichotomise.pydcm.read import _metadata_from_dataset
 from dichotomise.run import Run
 from dichotomise.stages.capture import CapturedSubject
-from dichotomise.stages.rectify import RectifyResult, RectifyReviewResult
+from dichotomise.stages.rectify import (
+    RectifyResult,
+    RectifyReviewResult,
+    _RectifyPlan,
+    _RectifyReviewPlan,
+)
 from dichotomise.stages.sanitise import SanitiseResult, SanitiseReviewResult
 from dichotomise.utils.archive import Archive, ProgressCallback, make_tarball
 from dichotomise.utils.text import safe_filename_text
@@ -148,7 +153,7 @@ def finalise(
 
 
 def _finalise(
-    rectify_result: RectifyResult,
+    rectify_result: RectifyResult | _RectifyPlan,
     run: Run,
     *,
     subject_label: str,
@@ -176,7 +181,12 @@ def _finalise(
                 raise FinaliseVerificationError(f"Copied file differs from its source: {item.path}")
     else:
         for item, output in zip(rectify_result.files, sanitise_result.files, strict=True):
-            _verify_pixel_data(item.path, output)
+            source = (
+                rectify_result.sources[item.path]
+                if isinstance(rectify_result, _RectifyPlan)
+                else item.path
+            )
+            _verify_pixel_data(source, output)
 
     subject = rectify_result.subject
     scan_datetime = (
@@ -216,6 +226,25 @@ def finalise_review(
     the renamed-but-unsanitised review tree. Runs unconditionally and
     independently of --keep-working-files.
     """
+    return _finalise_review(
+        rectify_review_result,
+        run,
+        subject_label=subject_label,
+        archive_token=archive_token,
+        sanitise_review_result=sanitise_review_result,
+        on_progress=on_progress,
+    )
+
+
+def _finalise_review(
+    rectify_review_result: RectifyReviewResult | _RectifyReviewPlan,
+    run: Run,
+    *,
+    subject_label: str,
+    archive_token: str,
+    sanitise_review_result: SanitiseReviewResult | None = None,
+    on_progress: ProgressCallback | None = None,
+) -> Archive | None:
     if not rectify_review_result.files:
         return None
     source_dir = (
@@ -237,7 +266,12 @@ def finalise_review(
         for item, output in zip(
             rectify_review_result.files, sanitise_review_result.files, strict=True
         ):
-            _verify_pixel_data(item.path, output)
+            source = (
+                rectify_review_result.sources[item.path]
+                if isinstance(rectify_review_result, _RectifyReviewPlan)
+                else item.path
+            )
+            _verify_pixel_data(source, output)
     name = (
         f"{safe_filename_text(subject_label)}_{safe_filename_text(archive_token)}"
         f"_review-archive_{run.timestamp}.tar.gz"

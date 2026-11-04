@@ -26,7 +26,12 @@ from dichotomise.stages.audit import (
 )
 from dichotomise.stages.capture import CapturedSubject
 from dichotomise.stages.finalise import FinaliseResult
-from dichotomise.stages.rectify import RectifyResult, RectifyReviewResult
+from dichotomise.stages.rectify import (
+    RectifyResult,
+    RectifyReviewResult,
+    _RectifyPlan,
+    _RectifyReviewPlan,
+)
 from dichotomise.stages.sanitise import SanitiseResult, SanitiseReviewResult
 from dichotomise.stages.sift import SiftResult
 from dichotomise.utils.archive import Archive
@@ -222,8 +227,8 @@ def write_sift_report(
     sift_result: SiftResult,
     reports_dir: Path,
     *,
-    rectify_result: RectifyResult | None = None,
-    rectify_review_result: RectifyReviewResult | None = None,
+    rectify_result: RectifyResult | _RectifyPlan | None = None,
+    rectify_review_result: RectifyReviewResult | _RectifyReviewPlan | None = None,
     review_archive: Archive | None = None,
     review_sanitised: bool = False,
     names: Mapping[Path, Path] | None = None,
@@ -333,7 +338,7 @@ def write_review_manifest(
 
 def _series_inventory(
     audit_result: AuditResult,
-    rectify_result: RectifyResult,
+    rectify_result: RectifyResult | _RectifyPlan,
     sanitise_result: SanitiseResult | None,
     names: Mapping[Path, Path] | None = None,
     describe_series: bool = True,
@@ -424,7 +429,7 @@ def write_finalise_report(
     sanitised: bool,
     sanitise_level: str | None,
     audit_result: AuditResult | None = None,
-    rectify_result: RectifyResult | None = None,
+    rectify_result: RectifyResult | _RectifyPlan | None = None,
     sanitise_result: SanitiseResult | None = None,
     names: Mapping[Path, Path] | None = None,
     describe_series: bool = True,
@@ -448,8 +453,8 @@ def write_finalise_report(
 
 def source_map_final_files(
     sift_result: SiftResult,
-    rectify_result: RectifyResult,
-    rectify_review_result: RectifyReviewResult,
+    rectify_result: RectifyResult | _RectifyPlan,
+    rectify_review_result: RectifyReviewResult | _RectifyReviewPlan,
     sanitise_result: SanitiseResult | None,
     sanitise_review_result: SanitiseReviewResult | None,
 ) -> dict[Path, str]:

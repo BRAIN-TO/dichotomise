@@ -8,7 +8,12 @@ from pathlib import Path
 from dichotomise.pydcm.naming import with_new_sop_instance_uid
 from dichotomise.pydcm.relabel import Policy, sanitise_file
 from dichotomise.stages.capture import CapturedSubject
-from dichotomise.stages.rectify import RectifyResult, RectifyReviewResult
+from dichotomise.stages.rectify import (
+    RectifyResult,
+    RectifyReviewResult,
+    _RectifyPlan,
+    _RectifyReviewPlan,
+)
 from dichotomise.utils.text import safe_filename_text
 
 
@@ -73,6 +78,21 @@ def sanitise(
     `replacement_cache` to also share it with `sanitise_review()`, so a UID
     common to a retained and a review file still gets the same replacement.
     """
+    return _sanitise(
+        rectify_result,
+        policy=policy,
+        subject_label=subject_label,
+        replacement_cache=replacement_cache,
+    )
+
+
+def _sanitise(
+    rectify_result: RectifyResult | _RectifyPlan,
+    *,
+    policy: Policy,
+    subject_label: str,
+    replacement_cache: dict[str, str] | None = None,
+) -> SanitiseResult:
     sanitised_dir = rectify_result.subject.working_dir / "sanitise"
     replacement_cache = {} if replacement_cache is None else replacement_cache
     files: list[Path] = []
@@ -85,7 +105,11 @@ def sanitise(
             raise FileExistsError(f"Sanitised output already exists: {target}")
         target.parent.mkdir(parents=True, exist_ok=True)
         new_uid = sanitise_file(
-            metadata.path,
+            (
+                rectify_result.sources[metadata.path]
+                if isinstance(rectify_result, _RectifyPlan)
+                else metadata.path
+            ),
             target,
             policy,
             subject_label=subject_label,
@@ -126,6 +150,23 @@ def sanitise_review(
     retained-files sanitise() call so a UID appearing in both a retained and
     a review file regenerates to the same new value.
     """
+    return _sanitise_review(
+        rectify_review_result,
+        policy=policy,
+        subject_label=subject_label,
+        scan_date=scan_date,
+        replacement_cache=replacement_cache,
+    )
+
+
+def _sanitise_review(
+    rectify_review_result: RectifyReviewResult | _RectifyReviewPlan,
+    *,
+    policy: Policy,
+    subject_label: str,
+    scan_date: str,
+    replacement_cache: dict[str, str],
+) -> SanitiseReviewResult | None:
     if not rectify_review_result.files:
         return None
     sanitised_review_dir = rectify_review_result.review_rectified_dir.parent / "sanitise-review"
@@ -140,7 +181,11 @@ def sanitise_review(
             raise FileExistsError(f"Sanitised output already exists: {target}")
         target.parent.mkdir(parents=True, exist_ok=True)
         new_uid = sanitise_file(
-            metadata.path,
+            (
+                rectify_review_result.sources[metadata.path]
+                if isinstance(rectify_review_result, _RectifyReviewPlan)
+                else metadata.path
+            ),
             target,
             policy,
             subject_label=subject_label,

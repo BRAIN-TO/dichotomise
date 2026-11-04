@@ -187,6 +187,20 @@ def test_keep_unzipped_moves_tree_without_copying(
     assert len(list(run.final_dir.rglob("*.dcm"))) == 1
 
 
+def test_sanitise_without_working_files_skips_rectified_copies(
+    tmp_path: Path, make_dicom_file: Callable[..., Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "export"
+    make_dicom_file(source / "series" / "1.dcm")
+
+    def reject_copy(*args: object, **kwargs: object) -> None:
+        raise AssertionError("Direct sanitisation should not copy source files")
+
+    monkeypatch.setattr(shutil, "copy2", reject_copy)
+    run = run_pipeline(source, tmp_path / "out", sanitise_requested=True)
+    assert len(list(run.archives_dir.glob("*dichotomised-archive*.tar.gz"))) == 1
+
+
 def test_run_pipeline_without_keep_unzipped_creates_no_final_dir(
     tmp_path: Path, make_dicom_file: Callable[..., Path]
 ) -> None:
@@ -641,7 +655,7 @@ def test_run_pipeline_writes_the_source_map_before_sanitising_so_a_failed_run_ke
     def _fail(*args: object, **kwargs: object) -> None:
         raise RuntimeError("sanitise failed")
 
-    monkeypatch.setattr("dichotomise.pipeline.sanitise", _fail)
+    monkeypatch.setattr("dichotomise.pipeline._sanitise", _fail)
 
     with pytest.raises(RuntimeError, match="sanitise failed"):
         run_pipeline(source, tmp_path / "out", sanitise_requested=True)
