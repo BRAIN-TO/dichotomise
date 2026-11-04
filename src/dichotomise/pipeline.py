@@ -13,6 +13,7 @@ from typing import TypeVar
 from dichotomise.errors import RelabelError
 from dichotomise.pydcm.names import generate_name
 from dichotomise.pydcm.relabel import (
+    Policy,
     load_policy,
     normalise_numeric_label,
     validate_label,
@@ -117,7 +118,6 @@ def _random_output_token(used_tokens: set[str]) -> str:
 def _prepare_labels(
     subjects: list[CapturedSubject],
     sanitise_requested: bool,
-    sanitise_level: str,
     label_mode: str,
     subject_id: str | None,
     new_id: str | None,
@@ -126,7 +126,6 @@ def _prepare_labels(
 ) -> list[str]:
     if not sanitise_requested:
         return [subject.subject_id for subject in subjects]
-    load_policy(sanitise_level)
     return [
         _resolve_subject_label(
             subject, label_mode, subject_id, new_id, subject_mappings, used_labels
@@ -173,11 +172,7 @@ def _process_subject(
     *,
     sanitise_requested: bool,
     sanitise_level: str,
-    label_mode: str,
-    subject_id: str | None,
-    new_id: str | None,
-    subject_mappings: Mapping[str, str] | None,
-    used_labels: set[str],
+    policy: Policy | None,
     used_output_tokens: set[str],
     resolved_label: str,
     keep_working_files: bool,
@@ -196,7 +191,6 @@ def _process_subject(
     # A sanitised run's reports name files by position, never by the source
     # filename, folder or UID, which can carry a participant code or scan time.
     names = pseudonymous_source_names(subject.files) if sanitise_requested else None
-    policy = load_policy(sanitise_level) if sanitise_requested else None
     # A policy that removes or replaces the series description must not leave it in
     # folder names or reports either.
     describe_series = policy is None or policy.keeps("SeriesDescription")
@@ -408,13 +402,13 @@ def run_pipeline(
         labels = _prepare_labels(
             subjects,
             sanitise_requested,
-            sanitise_level,
             label_mode,
             subject_id,
             new_id,
             subject_mappings,
             used_labels,
         )
+        policy = load_policy(sanitise_level) if sanitise_requested else None
         for subject, resolved_label in zip(subjects, labels, strict=True):
             archive_source_description = f"Study {subject.output_number}: archiving source DICOMs"
             source_archive_result = _run_stage(
@@ -434,11 +428,7 @@ def run_pipeline(
                 source_archive_result.path,
                 sanitise_requested=sanitise_requested,
                 sanitise_level=sanitise_level,
-                label_mode=label_mode,
-                subject_id=subject_id,
-                new_id=new_id,
-                subject_mappings=subject_mappings,
-                used_labels=used_labels,
+                policy=policy,
                 used_output_tokens=used_output_tokens,
                 resolved_label=resolved_label,
                 keep_working_files=keep_working_files,

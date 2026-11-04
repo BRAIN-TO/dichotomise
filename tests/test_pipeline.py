@@ -239,6 +239,20 @@ def test_run_pipeline_sanitise_numerical_label_mode(
     assert "sub-0007" in archives[0].name
 
 
+def test_numbering_overflow_fails_before_archiving(
+    tmp_path: Path, make_dicom_file: Callable[..., Path]
+) -> None:
+    source = tmp_path / "export"
+    make_dicom_file(source / "one" / "1.dcm", PatientID="one")
+    make_dicom_file(source / "two" / "1.dcm", PatientID="two")
+    out_dir = tmp_path / "out"
+    with pytest.raises(RelabelError):
+        run_pipeline(
+            source, out_dir, sanitise_requested=True, label_mode="numerical", subject_id="9999"
+        )
+    assert not list(out_dir.rglob("*.tar.gz"))
+
+
 def test_run_pipeline_sanitise_numerical_mode_without_subject_id_raises(
     tmp_path: Path, make_dicom_file: Callable[..., Path]
 ) -> None:
