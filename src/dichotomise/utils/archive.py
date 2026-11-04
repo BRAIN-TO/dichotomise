@@ -182,7 +182,19 @@ def _write_tarball_with_pigz(
         try:
             with tarfile.open(fileobj=stdin, mode="w|") as tar:
                 _add_entries(tar, entries, total_bytes, on_progress, source_digests)
-        finally:
+        except BaseException:
+            process.terminate()
+            try:
+                stdin.close()
+            except OSError:
+                pass
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+            raise
+        else:
             stdin.close()
             return_code = process.wait()
         if return_code != 0:

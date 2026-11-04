@@ -129,6 +129,21 @@ def test_make_tarball_falls_back_to_the_stdlib_codec_without_pigz(
     assert verify_archive(archive.path, archive.checksum_path) is True
 
 
+def test_interrupted_pigz_archive_stops_the_compressor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    compressor = tmp_path / "pigz"
+    compressor.write_text("#!/bin/sh\nexec sleep 30\n")
+    compressor.chmod(0o755)
+    monkeypatch.setattr(archive_module, "pigz_path", lambda: str(compressor))
+
+    def interrupt(done: int, total: int) -> None:
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        make_tarball(_make_source(tmp_path), tmp_path / "archive.tar.gz", on_progress=interrupt)
+
+
 @pytest.mark.skipif(shutil.which("pigz") is None, reason="pigz is not installed")
 def test_make_tarball_uses_pigz_when_available(tmp_path: Path) -> None:
     source = _make_source(tmp_path)
