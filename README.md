@@ -136,6 +136,14 @@ instances already on disk. The same happened to a
 look like one valid sequence; only the file count or a header audit reveals the
 problem.
 
+A separate study had two copies containing 631 and 616 files. The larger
+copy contained 15 byte-identical duplicates across seven series; each pair
+shared a SOP Instance UID. It also contained a file whose header identified
+Series 24 inside the Series 23 folder, where the genuine Series 23 instance
+was missing. The files alone do not establish why the two copies differed.
+Together, these findings show why a count check and a folder-name check are
+not enough: a useful audit needs both content hashes and header metadata.
+
 # dichotomise to the rescue
 
 `dichotomise` addresses this failure at ingestion. It reads identity from

@@ -114,6 +114,27 @@ def _random_output_token(used_tokens: set[str]) -> str:
     raise RelabelError("Could not create a unique output token for every study")
 
 
+def _prepare_labels(
+    subjects: list[CapturedSubject],
+    sanitise_requested: bool,
+    sanitise_level: str,
+    label_mode: str,
+    subject_id: str | None,
+    new_id: str | None,
+    subject_mappings: Mapping[str, str] | None,
+    used_labels: set[str],
+) -> list[str]:
+    if not sanitise_requested:
+        return [subject.subject_id for subject in subjects]
+    load_policy(sanitise_level)
+    return [
+        _resolve_subject_label(
+            subject, label_mode, subject_id, new_id, subject_mappings, used_labels
+        )
+        for subject in subjects
+    ]
+
+
 def _reports_dir_for(run: Run, subject_label: str, output_token: str) -> Path:
     """Return this study's collision-safe directory under reports/."""
     return run.reports_dir / f"{safe_filename_text(subject_label)}_{output_token}"
@@ -158,6 +179,7 @@ def _process_subject(
     subject_mappings: Mapping[str, str] | None,
     used_labels: set[str],
     used_output_tokens: set[str],
+    resolved_label: str,
     keep_unzipped: bool,
     on_audit: Callable[[AuditResult], None] | None,
     on_stage: StageCallback | None,
@@ -167,11 +189,7 @@ def _process_subject(
     # inputs, not on anything audit/sift/rectify produce, so it can be
     # resolved upfront and every report written straight to its final
     # location, rather than staged under a temporary name and renamed later.
-    subject_label = subject.subject_id
-    if sanitise_requested:
-        subject_label = _resolve_subject_label(
-            subject, label_mode, subject_id, new_id, subject_mappings, used_labels
-        )
+    subject_label = resolved_label
     output_token = _random_output_token(used_output_tokens)
     reports_dir = _reports_dir_for(run, subject_label, output_token)
     # A sanitised run's reports name files by position, never by the source
@@ -381,7 +399,17 @@ def run_pipeline(
                 )
         used_labels: set[str] = set()
         used_output_tokens: set[str] = set()
-        for subject in subjects:
+        labels = _prepare_labels(
+            subjects,
+            sanitise_requested,
+            sanitise_level,
+            label_mode,
+            subject_id,
+            new_id,
+            subject_mappings,
+            used_labels,
+        )
+        for subject, resolved_label in zip(subjects, labels, strict=True):
             archive_source_description = f"Study {subject.output_number}: archiving source DICOMs"
             source_archive_result = _run_stage(
                 archive_source_description,
@@ -406,6 +434,7 @@ def run_pipeline(
                 subject_mappings=subject_mappings,
                 used_labels=used_labels,
                 used_output_tokens=used_output_tokens,
+                resolved_label=resolved_label,
                 keep_unzipped=keep_unzipped,
                 on_audit=on_audit,
                 on_stage=on_stage,

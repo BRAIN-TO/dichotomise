@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _installed_version
 from pathlib import Path
-from threading import Thread
+from threading import Event, Thread
 from time import monotonic
 from typing import Any, TypeVar
 
@@ -216,26 +216,22 @@ def _run_with_elapsed_ticker(run_started: float, work: Callable[[], _T]) -> _T:
     if not console.is_terminal:
         return work()
 
-    result: list[_T] = []
-    failure: list[BaseException] = []
-
-    def _target() -> None:
-        try:
-            result.append(work())
-        except BaseException as exc:  # re-raised on the calling thread below
-            failure.append(exc)
-
-    thread = Thread(target=_target)
-    thread.start()
+    stopped = Event()
     with Live(console=console, refresh_per_second=4, transient=True) as live:
-        while thread.is_alive():
-            elapsed = _format_elapsed(monotonic() - run_started)
-            live.update(Text(f"Time elapsed: {elapsed}", style="dim"))
-            thread.join(timeout=0.2)
 
-    if failure:
-        raise failure[0]
-    return result[0]
+        def update() -> None:
+            while not stopped.is_set():
+                elapsed = _format_elapsed(monotonic() - run_started)
+                live.update(Text(f"Time elapsed: {elapsed}", style="dim"))
+                stopped.wait(0.2)
+
+        thread = Thread(target=update)
+        thread.start()
+        try:
+            return work()
+        finally:
+            stopped.set()
+            thread.join()
 
 
 def _log_stage(status: str, description: str, elapsed_seconds: float) -> None:
