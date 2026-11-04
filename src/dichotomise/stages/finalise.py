@@ -8,6 +8,8 @@ from pathlib import Path
 import pydicom
 
 from dichotomise.errors import FinaliseVerificationError, NotDicomError
+from dichotomise.pydcm.identify import file_digest
+from dichotomise.pydcm.naming import rectified_path
 from dichotomise.pydcm.read import read_metadata
 from dichotomise.run import Run
 from dichotomise.stages.capture import CapturedSubject
@@ -111,6 +113,23 @@ def finalise(
     source_dir = sanitise_result.sanitised_dir if sanitise_result else rectify_result.rectified_dir
     expected_count = len(sanitise_result.files) if sanitise_result else len(rectify_result.files)
     _verify_output_tree(expected_count, source_dir)
+
+    source_by_target = {
+        rectified_path(rectify_result.rectified_dir, item): item.path
+        for item in rectify_result.subject.files
+    }
+    if sanitise_result is None:
+        for item in rectify_result.files:
+            original = source_by_target.get(item.path)
+            if original is not None and file_digest(original) != file_digest(item.path):
+                raise FinaliseVerificationError(f"Copied file differs from its source: {item.path}")
+    else:
+        for item, output in zip(rectify_result.files, sanitise_result.files, strict=True):
+            original_dataset = pydicom.dcmread(item.path)
+            finished = pydicom.dcmread(output)
+            for field in ("PixelData", "FloatPixelData", "DoubleFloatPixelData"):
+                if original_dataset.get(field) != finished.get(field):
+                    raise FinaliseVerificationError(f"Pixel data differs from its source: {output}")
 
     subject = rectify_result.subject
     scan_datetime = (

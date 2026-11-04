@@ -12,7 +12,7 @@ from dichotomise.run import start_run
 from dichotomise.stages.capture import CapturedSubject
 from dichotomise.stages.finalise import finalise, finalise_review
 from dichotomise.stages.rectify import RectifyResult, RectifyReviewResult
-from dichotomise.stages.sanitise import SanitiseReviewResult
+from dichotomise.stages.sanitise import SanitiseResult, SanitiseReviewResult
 from dichotomise.utils.archive import verify_archive
 
 
@@ -67,6 +67,22 @@ def test_finalise_raises_when_the_output_tree_is_missing_an_expected_file(
 
     with pytest.raises(FinaliseVerificationError):
         finalise(rectify_result, run, subject_label="sub-01")
+
+
+def test_finalise_rejects_changed_sanitised_pixel_data(
+    tmp_path: Path, make_dicom_file: Callable[..., Path]
+) -> None:
+    rectified_dir = tmp_path / "rectify"
+    sanitised_dir = tmp_path / "sanitise"
+    original = make_dicom_file(rectified_dir / "1.dcm", PixelData=b"\x01\x02")
+    changed = make_dicom_file(sanitised_dir / "1.dcm", PixelData=b"\x03\x04")
+    subject = _subject(tmp_path)
+    rectified = RectifyResult(subject, rectified_dir, [read_metadata(original)])
+    sanitised = SanitiseResult(subject, "sub-01", sanitised_dir, [changed])
+    run = start_run(tmp_path / "out")
+
+    with pytest.raises(FinaliseVerificationError, match="Pixel data differs"):
+        finalise(rectified, run, subject_label="sub-01", sanitise_result=sanitised)
 
 
 def test_finalise_review_returns_none_when_there_are_no_review_files(tmp_path: Path) -> None:
