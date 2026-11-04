@@ -55,9 +55,8 @@ def _expected_uncompressed_pixel_bytes(dataset: pydicom.Dataset) -> int | None:
     return (total_bits + 7) // 8
 
 
-def _verify_uncompressed_pixel_data(path: Path) -> None:
+def _verify_uncompressed_pixel_data(path: Path, dataset: pydicom.Dataset) -> None:
     """Reject an uncompressed image whose stored pixel data has the wrong length."""
-    dataset = pydicom.dcmread(path, force=False)
     expected_bytes = _expected_uncompressed_pixel_bytes(dataset)
     if expected_bytes is None:
         return
@@ -68,7 +67,7 @@ def _verify_uncompressed_pixel_data(path: Path) -> None:
         )
 
 
-def _verify_output_tree(expected_file_count: int, output_dir: Path) -> None:
+def _verify_output_tree(expected_files: list[Path], output_dir: Path) -> None:
     """Independently re-check the finished output tree before it is archived.
 
     This deliberately re-reads the output tree from disk rather than trusting
@@ -77,9 +76,9 @@ def _verify_output_tree(expected_file_count: int, output_dir: Path) -> None:
     to write) is caught here rather than archived as if it were correct.
     """
     found_files = sorted(p for p in output_dir.rglob("*") if p.is_file())
-    if len(found_files) != expected_file_count:
+    if set(found_files) != set(expected_files):
         raise FinaliseVerificationError(
-            f"Expected {expected_file_count} file(s) in the finished output, "
+            f"Expected {len(expected_files)} file(s) in the finished output, "
             f"but found {len(found_files)} in {output_dir}"
         )
     for path in found_files:
@@ -90,7 +89,7 @@ def _verify_output_tree(expected_file_count: int, output_dir: Path) -> None:
                 f"{path} could not be read back after processing; the finished output "
                 "may be corrupt"
             ) from error
-        _verify_uncompressed_pixel_data(path)
+        _verify_uncompressed_pixel_data(path, pydicom.dcmread(path, force=False))
 
 
 def finalise(
@@ -111,8 +110,10 @@ def finalise(
     another when their other filename fields match.
     """
     source_dir = sanitise_result.sanitised_dir if sanitise_result else rectify_result.rectified_dir
-    expected_count = len(sanitise_result.files) if sanitise_result else len(rectify_result.files)
-    _verify_output_tree(expected_count, source_dir)
+    expected_files = (
+        sanitise_result.files if sanitise_result else [item.path for item in rectify_result.files]
+    )
+    _verify_output_tree(expected_files, source_dir)
 
     source_by_target = {
         rectified_path(rectify_result.rectified_dir, item): item.path
@@ -127,9 +128,29 @@ def finalise(
         for item, output in zip(rectify_result.files, sanitise_result.files, strict=True):
             original_dataset = pydicom.dcmread(item.path)
             finished = pydicom.dcmread(output)
-            for field in ("PixelData", "FloatPixelData", "DoubleFloatPixelData"):
+            for field in (
+                "PixelData",
+                "FloatPixelData",
+                "DoubleFloatPixelData",
+                "Rows",
+                "Columns",
+                "NumberOfFrames",
+                "SamplesPerPixel",
+                "BitsAllocated",
+                "BitsStored",
+                "HighBit",
+                "PixelRepresentation",
+                "PlanarConfiguration",
+                "PhotometricInterpretation",
+            ):
                 if original_dataset.get(field) != finished.get(field):
                     raise FinaliseVerificationError(f"Pixel data differs from its source: {output}")
+            if original_dataset.file_meta.get("TransferSyntaxUID") != finished.file_meta.get(
+                "TransferSyntaxUID"
+            ):
+                raise FinaliseVerificationError(
+                    f"Transfer syntax differs from its source: {output}"
+                )
 
     subject = rectify_result.subject
     scan_datetime = (

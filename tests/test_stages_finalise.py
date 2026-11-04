@@ -85,6 +85,18 @@ def test_finalise_rejects_changed_sanitised_pixel_data(
         finalise(rectified, run, subject_label="sub-01", sanitise_result=sanitised)
 
 
+def test_finalise_rejects_unexpected_file_even_when_count_matches(
+    tmp_path: Path, make_dicom_file: Callable[..., Path]
+) -> None:
+    output_dir = tmp_path / "rectify"
+    expected = make_dicom_file(output_dir / "expected.dcm")
+    metadata = read_metadata(expected)
+    expected.rename(output_dir / "unexpected.dcm")
+    result = RectifyResult(_subject(tmp_path), output_dir, [metadata])
+    with pytest.raises(FinaliseVerificationError):
+        finalise(result, start_run(tmp_path / "out"), subject_label="sub-01")
+
+
 def test_finalise_review_returns_none_when_there_are_no_review_files(tmp_path: Path) -> None:
     rectify_review_result = RectifyReviewResult(
         review_rectified_dir=tmp_path / "review-rectify", files=[], collision_count=0
