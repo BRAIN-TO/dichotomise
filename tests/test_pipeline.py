@@ -329,6 +329,24 @@ def test_sanitised_pixel_corruption_before_archiving_is_rejected(
         run_pipeline(source, out_dir, sanitise_requested=True, on_stage=corrupt_output)
 
 
+def test_sanitised_identity_corruption_before_archiving_is_rejected(
+    tmp_path: Path, make_dicom_file: Callable[..., Path]
+) -> None:
+    source = tmp_path / "export"
+    make_dicom_file(source / "series" / "1.dcm")
+    out_dir = tmp_path / "out"
+
+    def corrupt_output(status: str, description: str, elapsed: float) -> None:
+        if status == "started" and description.endswith("creating verified archive"):
+            output = next(out_dir.rglob("working/*/sanitise/**/*.dcm"))
+            dataset = pydicom.dcmread(output)
+            dataset.PatientID = "unexpected"
+            dataset.save_as(output)
+
+    with pytest.raises(FinaliseVerificationError, match="Sanitised identity differs"):
+        run_pipeline(source, out_dir, sanitise_requested=True, on_stage=corrupt_output)
+
+
 def test_run_pipeline_sanitise_numerical_mode_without_subject_id_raises(
     tmp_path: Path, make_dicom_file: Callable[..., Path]
 ) -> None:

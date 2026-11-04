@@ -110,6 +110,7 @@ def _sanitise(
     subject_label: str,
     replacement_cache: dict[str, str] | None = None,
     expected_pixels: dict[Path, tuple[object, ...]] | None = None,
+    expected_identities: dict[Path, tuple[str, str]] | None = None,
 ) -> SanitiseResult:
     sanitised_dir = rectify_result.subject.working_dir / "sanitise"
     replacement_cache = {} if replacement_cache is None else replacement_cache
@@ -127,7 +128,7 @@ def _sanitise(
         if target.exists():
             raise FileExistsError(f"Sanitised output already exists: {target}")
         target.parent.mkdir(parents=True, exist_ok=True)
-        new_uid, fingerprint = _sanitise_file(
+        new_uid, fingerprint, patient_id = _sanitise_file(
             (
                 rectify_result.sources[metadata.path]
                 if isinstance(rectify_result, _RectifyPlan)
@@ -144,6 +145,8 @@ def _sanitise(
         files.append(target)
         if expected_pixels is not None:
             expected_pixels[target] = fingerprint
+        if expected_identities is not None:
+            expected_identities[target] = (patient_id, new_uid)
 
     return SanitiseResult(
         subject=rectify_result.subject,
@@ -194,6 +197,7 @@ def _sanitise_review(
     scan_date: str,
     replacement_cache: dict[str, str],
     expected_pixels: dict[Path, tuple[object, ...]] | None = None,
+    expected_identities: dict[Path, tuple[str, str]] | None = None,
 ) -> SanitiseReviewResult | None:
     if not rectify_review_result.files:
         return None
@@ -212,7 +216,7 @@ def _sanitise_review(
         if target.exists():
             raise FileExistsError(f"Sanitised output already exists: {target}")
         target.parent.mkdir(parents=True, exist_ok=True)
-        new_uid, fingerprint = _sanitise_file(
+        new_uid, fingerprint, patient_id = _sanitise_file(
             (
                 rectify_review_result.sources[metadata.path]
                 if isinstance(rectify_review_result, _RectifyReviewPlan)
@@ -229,4 +233,6 @@ def _sanitise_review(
         files.append(target)
         if expected_pixels is not None:
             expected_pixels[target] = fingerprint
+        if expected_identities is not None:
+            expected_identities[target] = (patient_id, new_uid)
     return SanitiseReviewResult(sanitised_review_dir=sanitised_review_dir, files=files)

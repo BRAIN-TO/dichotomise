@@ -513,7 +513,7 @@ def sanitise_file(
     function owns all DICOM-specific file handling. Returns the saved file's
     SOP Instance UID, which the policy may have regenerated.
     """
-    uid, _ = _sanitise_file(
+    uid, _, _ = _sanitise_file(
         source_path,
         target_path,
         policy,
@@ -534,7 +534,7 @@ def _sanitise_file(
     scan_date: str,
     replacement_cache: MutableMapping[str, str],
     verify: bool,
-) -> tuple[str, tuple[object, ...]]:
+) -> tuple[str, tuple[object, ...], str]:
     dataset = pydicom.dcmread(source_path)
     fingerprint = _pixel_fingerprint(dataset)
     apply_policy(
@@ -547,4 +547,4 @@ def _sanitise_file(
     dataset.save_as(target_path)
     if verify:
         pydicom.dcmread(target_path, stop_before_pixels=True)
-    return str(dataset.get("SOPInstanceUID", "")), fingerprint
+    return str(dataset.get("SOPInstanceUID", "")), fingerprint, str(dataset.get("PatientID", ""))
