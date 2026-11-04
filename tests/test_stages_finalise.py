@@ -189,3 +189,22 @@ def test_finalise_review_archives_the_sanitised_tree_when_sanitised(
             if member.isfile()
         }
     assert contents == {"021-DWI/1.dcm": sanitised_file.read_bytes()}
+
+
+def test_finalise_review_rejects_changed_pixels(
+    tmp_path: Path, make_dicom_file: Callable[..., Path]
+) -> None:
+    original_dir = tmp_path / "review"
+    sanitised_dir = tmp_path / "sanitised"
+    original = make_dicom_file(original_dir / "1.dcm", PixelData=b"\x01\x02")
+    changed = make_dicom_file(sanitised_dir / "1.dcm", PixelData=b"\x03\x04")
+    review = RectifyReviewResult(original_dir, [read_metadata(original)], 0)
+    sanitised = SanitiseReviewResult(sanitised_dir, [changed])
+    with pytest.raises(FinaliseVerificationError, match="Pixel data differs"):
+        finalise_review(
+            review,
+            start_run(tmp_path / "out"),
+            subject_label="sub-01",
+            archive_token="a1b2c3",
+            sanitise_review_result=sanitised,
+        )

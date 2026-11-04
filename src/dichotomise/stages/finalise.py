@@ -94,6 +94,32 @@ def _verify_output_tree(expected_files: list[Path], output_dir: Path) -> None:
         _verify_uncompressed_pixel_data(path, dataset)
 
 
+def _verify_pixel_data(source: Path, output: Path) -> None:
+    original_dataset = pydicom.dcmread(source)
+    finished = pydicom.dcmread(output)
+    for field in (
+        "PixelData",
+        "FloatPixelData",
+        "DoubleFloatPixelData",
+        "Rows",
+        "Columns",
+        "NumberOfFrames",
+        "SamplesPerPixel",
+        "BitsAllocated",
+        "BitsStored",
+        "HighBit",
+        "PixelRepresentation",
+        "PlanarConfiguration",
+        "PhotometricInterpretation",
+    ):
+        if original_dataset.get(field) != finished.get(field):
+            raise FinaliseVerificationError(f"Pixel data differs from its source: {output}")
+    if original_dataset.file_meta.get("TransferSyntaxUID") != finished.file_meta.get(
+        "TransferSyntaxUID"
+    ):
+        raise FinaliseVerificationError(f"Transfer syntax differs from its source: {output}")
+
+
 def finalise(
     rectify_result: RectifyResult,
     run: Run,
@@ -150,31 +176,7 @@ def _finalise(
                 raise FinaliseVerificationError(f"Copied file differs from its source: {item.path}")
     else:
         for item, output in zip(rectify_result.files, sanitise_result.files, strict=True):
-            original_dataset = pydicom.dcmread(item.path)
-            finished = pydicom.dcmread(output)
-            for field in (
-                "PixelData",
-                "FloatPixelData",
-                "DoubleFloatPixelData",
-                "Rows",
-                "Columns",
-                "NumberOfFrames",
-                "SamplesPerPixel",
-                "BitsAllocated",
-                "BitsStored",
-                "HighBit",
-                "PixelRepresentation",
-                "PlanarConfiguration",
-                "PhotometricInterpretation",
-            ):
-                if original_dataset.get(field) != finished.get(field):
-                    raise FinaliseVerificationError(f"Pixel data differs from its source: {output}")
-            if original_dataset.file_meta.get("TransferSyntaxUID") != finished.file_meta.get(
-                "TransferSyntaxUID"
-            ):
-                raise FinaliseVerificationError(
-                    f"Transfer syntax differs from its source: {output}"
-                )
+            _verify_pixel_data(item.path, output)
 
     subject = rectify_result.subject
     scan_datetime = (
@@ -231,6 +233,11 @@ def finalise_review(
         raise FinaliseVerificationError(
             f"Review output files do not match the expected files in {source_dir}"
         )
+    if sanitise_review_result is not None:
+        for item, output in zip(
+            rectify_review_result.files, sanitise_review_result.files, strict=True
+        ):
+            _verify_pixel_data(item.path, output)
     name = (
         f"{safe_filename_text(subject_label)}_{safe_filename_text(archive_token)}"
         f"_review-archive_{run.timestamp}.tar.gz"
