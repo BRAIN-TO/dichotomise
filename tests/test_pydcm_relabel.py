@@ -205,6 +205,24 @@ def test_policy_applies_to_nested_datasets_and_removes_sequences() -> None:
     assert "AcquisitionContextSequence" not in dataset
 
 
+def test_regeneration_preserves_class_uids_and_remaps_known_references() -> None:
+    dataset = _dataset(SOPInstanceUID="1.2.3.4")
+    nested = Dataset()
+    nested.ReferencedSOPInstanceUID = ["1.2.3.4", "1.2.3.5"]
+    nested.ReferencedSOPClassUID = "1.2.3.4"
+    dataset.ReferencedImageSequence = [nested]
+    apply_policy(
+        dataset,
+        load_policy("standard"),
+        subject_label="sub-0001",
+        scan_date="20260101",
+        replacement_cache={},
+    )
+    assert nested.ReferencedSOPInstanceUID[0] == dataset.SOPInstanceUID
+    assert nested.ReferencedSOPInstanceUID[1] != "1.2.3.5"
+    assert nested.ReferencedSOPClassUID == "1.2.3.4"
+
+
 def test_apply_policy_full_also_removes_descriptive_fields() -> None:
     dataset = _dataset(
         PatientName="Doe^Jane^19900101",
