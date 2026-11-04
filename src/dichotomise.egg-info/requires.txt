@@ -1,0 +1,7 @@
+pydicom<4,>=3.0
+click<9,>=8.1
+rich<15,>=13
+rich-click<2,>=1.9
+
+[test]
+pytest<10,>=8

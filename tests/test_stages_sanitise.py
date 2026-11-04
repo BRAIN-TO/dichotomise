@@ -58,6 +58,22 @@ def test_sanitise_applies_the_policy_and_writes_a_new_tree(
     assert original.PatientID == "12345"
 
 
+def test_full_policy_does_not_keep_series_description_in_folder(
+    tmp_path: Path, make_dicom_file: Callable[..., Path]
+) -> None:
+    rectified_dir = tmp_path / "rectify"
+    source = make_dicom_file(
+        rectified_dir / "001-private_name" / "1.dcm", SeriesDescription="private_name"
+    )
+    result = sanitise(
+        RectifyResult(_subject(tmp_path), rectified_dir, [read_metadata(source)]),
+        policy=load_policy("full"),
+        subject_label="sub-0001",
+    )
+    assert result.files[0].parent.name == "001-NA"
+    assert "private_name" not in str(result.files[0])
+
+
 def test_sanitise_regenerates_uids_consistently_across_files(
     tmp_path: Path, make_dicom_file: Callable[..., Path]
 ) -> None:

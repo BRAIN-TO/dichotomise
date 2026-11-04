@@ -9,6 +9,7 @@ from dichotomise.pydcm.naming import with_new_sop_instance_uid
 from dichotomise.pydcm.relabel import Policy, sanitise_file
 from dichotomise.stages.capture import CapturedSubject
 from dichotomise.stages.rectify import RectifyResult, RectifyReviewResult
+from dichotomise.utils.text import safe_filename_text
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,19 @@ class SanitiseResult:
     files: list[Path]
 
 
+def _policy_path(target: Path, policy: Policy) -> Path:
+    instruction = policy.actions.get("SeriesDescription", {})
+    action = instruction.get("action", "keep")
+    if action == "remove":
+        description = "NA"
+    elif action in ("replace", "add"):
+        description = safe_filename_text(str(instruction.get("value", "")))
+    else:
+        return target
+    series = target.parent.name.partition("-")[0]
+    return target.parent.parent / f"{series}-{description}" / target.name
+
+
 def _renamed_for_uid(target: Path, old_uid: str, new_uid: str) -> Path:
     """Rename a sanitised file if its SOP Instance UID was regenerated.
 
@@ -31,6 +45,8 @@ def _renamed_for_uid(target: Path, old_uid: str, new_uid: str) -> Path:
         return target
     renamed = with_new_sop_instance_uid(target, old_uid, new_uid)
     if renamed != target:
+        if renamed.exists():
+            raise FileExistsError(f"Sanitised output already exists: {renamed}")
         target.rename(renamed)
     return renamed
 
@@ -55,7 +71,11 @@ def sanitise(
     files: list[Path] = []
 
     for metadata in rectify_result.files:
-        target = sanitised_dir / metadata.path.relative_to(rectify_result.rectified_dir)
+        target = _policy_path(
+            sanitised_dir / metadata.path.relative_to(rectify_result.rectified_dir), policy
+        )
+        if target.exists():
+            raise FileExistsError(f"Sanitised output already exists: {target}")
         target.parent.mkdir(parents=True, exist_ok=True)
         new_uid = sanitise_file(
             metadata.path,
@@ -104,9 +124,13 @@ def sanitise_review(
     sanitised_review_dir = rectify_review_result.review_rectified_dir.parent / "sanitise-review"
     files: list[Path] = []
     for metadata in rectify_review_result.files:
-        target = sanitised_review_dir / metadata.path.relative_to(
-            rectify_review_result.review_rectified_dir
+        target = _policy_path(
+            sanitised_review_dir
+            / metadata.path.relative_to(rectify_review_result.review_rectified_dir),
+            policy,
         )
+        if target.exists():
+            raise FileExistsError(f"Sanitised output already exists: {target}")
         target.parent.mkdir(parents=True, exist_ok=True)
         new_uid = sanitise_file(
             metadata.path,

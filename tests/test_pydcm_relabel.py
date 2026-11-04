@@ -164,6 +164,25 @@ def test_apply_policy_regenerates_the_same_uid_consistently_across_files() -> No
     assert first.StudyInstanceUID != "1.1"
 
 
+def test_sop_reference_is_regenerated_consistently_before_its_target() -> None:
+    reference = _dataset()
+    nested = Dataset()
+    nested.ReferencedSOPInstanceUID = "1.2.3.4"
+    reference.ReferencedImageSequence = [nested]
+    target = _dataset(SOPInstanceUID="1.2.3.4")
+    cache: dict[str, str] = {}
+    for dataset in (reference, target):
+        apply_policy(
+            dataset,
+            load_policy("standard"),
+            subject_label="sub-0001",
+            scan_date="20260101",
+            replacement_cache=cache,
+        )
+    assert nested.ReferencedSOPInstanceUID == target.SOPInstanceUID
+    assert target.SOPInstanceUID != "1.2.3.4"
+
+
 def test_apply_policy_full_also_removes_descriptive_fields() -> None:
     dataset = _dataset(
         PatientName="Doe^Jane^19900101",

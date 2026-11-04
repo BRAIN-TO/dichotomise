@@ -1,0 +1,2 @@
+[console_scripts]
+dichotomise = dichotomise.cli:cli
