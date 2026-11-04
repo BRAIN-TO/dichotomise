@@ -1,10 +1,16 @@
 # Sanitisation policies
 
+**TL;DR:** Policies control which DICOM fields are kept, removed or replaced.
+The processed output is only as private as the selected policy makes it.
+
 This records the comparison behind `src/dichotomise/pydcm/policies/*.json` and
-the policy file schema. See the main `README.md` for the output-folder
-structure these policies feed into.
+the policy file schema. See [usage and output](usage.md#output-structure) for
+the output-folder structure these policies feed into.
 
 ## Where this came from
+
+**TL;DR:** The policies were informed by comparing three scanner exports of
+the same study; that comparison does not establish confidentiality compliance.
 
 `tests/data/` contains the same study exported from the scanner three ways:
 `default_export` (nothing removed), `service_export` (the scanner's
@@ -48,6 +54,9 @@ series across the three exports safely requires comparing header content
 inside the files, never folder names alone.
 
 ## Policy file schema
+
+**TL;DR:** Each policy maps DICOM field names to actions and can inherit from
+another policy.
 
 Each policy is a small JSON file: a `name`, a `description`, a
 `default_action` (what happens to every field not explicitly listed, always
@@ -109,6 +118,9 @@ explain, in place, how to build a new policy.
 
 ## The name generator
 
+**TL;DR:** The built-in generator combines an adjective and a surname to make
+a readable placeholder.
+
 `pydcm/names.py`'s `generate_name()` produces the `random_name` action's
 placeholder: one adjective plus one surname, joined by `_` (e.g.
 `gracious_abrahall`), which `pydcm/relabel.py` then reformats into DICOM PN
@@ -130,6 +142,9 @@ invented names.
 
 ## Five policies
 
+**TL;DR:** `minimal` is the default; the other policies retain, remove or
+replace different fields.
+
 | Policy | Matches | What happens |
 |---|---|---|
 | `default.json` | scanner's `default_export` | nothing changed |
@@ -146,6 +161,8 @@ not hardcode a list of allowed levels, and an unrecognised name produces a
 plain error naming what's available rather than a Python traceback.
 
 ## Status
+
+**TL;DR:** The pipeline loads and applies these policy files.
 
 `pydcm/relabel.py`'s `load_policy()`/`apply_policy()` and
 `stages/sanitise.py` read these files; they are not just documentation.
