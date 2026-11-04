@@ -230,6 +230,21 @@ def test_pipeline_output_options(
         assert working.stat().st_ino != final.stat().st_ino
 
 
+@pytest.mark.parametrize("sanitised", [False, True])
+def test_identical_cross_folder_files_produce_one_output(
+    tmp_path: Path, make_dicom_file: Callable[..., Path], sanitised: bool
+) -> None:
+    source = tmp_path / "export"
+    original = make_dicom_file(source / "first" / "1.dcm")
+    second = source / "second" / "1.dcm"
+    second.parent.mkdir(parents=True)
+    shutil.copy2(original, second)
+    run = run_pipeline(source, tmp_path / "out", sanitise_requested=sanitised)
+    archive = next(run.archives_dir.glob("*dichotomised-archive*.tar.gz"))
+    with tarfile.open(archive) as handle:
+        assert len([member for member in handle.getmembers() if member.isfile()]) == 1
+
+
 def test_run_pipeline_without_keep_unzipped_creates_no_final_dir(
     tmp_path: Path, make_dicom_file: Callable[..., Path]
 ) -> None:
