@@ -157,6 +157,16 @@ def finalise_review(
         if sanitise_review_result is not None
         else rectify_review_result.review_rectified_dir
     )
+    expected = (
+        sanitise_review_result.files
+        if sanitise_review_result is not None
+        else [item.path for item in rectify_review_result.files]
+    )
+    found = {path for path in source_dir.rglob("*") if path.is_file()}
+    if found != set(expected):
+        raise FinaliseVerificationError(
+            f"Review output files do not match the expected files in {source_dir}"
+        )
     name = (
         f"{safe_filename_text(subject_label)}_{safe_filename_text(archive_token)}"
         f"_review-archive_{run.timestamp}.tar.gz"

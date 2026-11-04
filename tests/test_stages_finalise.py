@@ -83,6 +83,22 @@ def test_finalise_review_returns_none_when_there_are_no_review_files(tmp_path: P
     assert not run.archives_dir.exists() or not list(run.archives_dir.glob("*"))
 
 
+def test_finalise_review_rejects_a_missing_file(
+    tmp_path: Path, make_dicom_file: Callable[..., Path]
+) -> None:
+    review_dir = tmp_path / "review"
+    source = make_dicom_file(review_dir / "1.dcm")
+    metadata = read_metadata(source)
+    source.unlink()
+    result = RectifyReviewResult(
+        review_rectified_dir=review_dir, files=[metadata], collision_count=0
+    )
+    run = start_run(tmp_path / "out")
+
+    with pytest.raises(FinaliseVerificationError):
+        finalise_review(result, run, subject_label="sub-01", archive_token="a1b2c3")
+
+
 def test_finalise_review_archives_the_renamed_review_tree_when_not_sanitised(
     tmp_path: Path, make_dicom_file: Callable[..., Path]
 ) -> None:
