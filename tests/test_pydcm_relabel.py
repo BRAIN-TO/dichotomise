@@ -183,6 +183,28 @@ def test_sop_reference_is_regenerated_consistently_before_its_target() -> None:
     assert target.SOPInstanceUID != "1.2.3.4"
 
 
+def test_policy_applies_to_nested_datasets_and_removes_sequences() -> None:
+    dataset = _dataset()
+    nested = Dataset()
+    nested.PatientName = "Original^Name"
+    dataset.ReferencedImageSequence = [nested]
+    removed = Dataset()
+    removed.PatientName = "Other^Name"
+    dataset.AcquisitionContextSequence = [removed]
+    policy = Policy(
+        name="nested",
+        actions={
+            "PatientName": {"action": "replace", "value": "Anonymous"},
+            "AcquisitionContextSequence": {"action": "remove"},
+        },
+    )
+    apply_policy(
+        dataset, policy, subject_label="sub-0001", scan_date="20260101", replacement_cache={}
+    )
+    assert str(nested.PatientName) == "Anonymous"
+    assert "AcquisitionContextSequence" not in dataset
+
+
 def test_apply_policy_full_also_removes_descriptive_fields() -> None:
     dataset = _dataset(
         PatientName="Doe^Jane^19900101",

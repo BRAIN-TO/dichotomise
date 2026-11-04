@@ -6,11 +6,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pydicom
+from pydicom.errors import InvalidDicomError
 
-from dichotomise.errors import FinaliseVerificationError, NotDicomError
+from dichotomise.errors import FinaliseVerificationError
 from dichotomise.pydcm.identify import file_digest
 from dichotomise.pydcm.naming import rectified_path
-from dichotomise.pydcm.read import read_metadata
+from dichotomise.pydcm.read import _metadata_from_dataset
 from dichotomise.run import Run
 from dichotomise.stages.capture import CapturedSubject
 from dichotomise.stages.rectify import RectifyResult, RectifyReviewResult
@@ -83,13 +84,14 @@ def _verify_output_tree(expected_files: list[Path], output_dir: Path) -> None:
         )
     for path in found_files:
         try:
-            read_metadata(path)
-        except NotDicomError as error:
+            dataset = pydicom.dcmread(path, force=False)
+            _metadata_from_dataset(dataset, path)
+        except (InvalidDicomError, OSError) as error:
             raise FinaliseVerificationError(
                 f"{path} could not be read back after processing; the finished output "
                 "may be corrupt"
             ) from error
-        _verify_uncompressed_pixel_data(path, pydicom.dcmread(path, force=False))
+        _verify_uncompressed_pixel_data(path, dataset)
 
 
 def finalise(

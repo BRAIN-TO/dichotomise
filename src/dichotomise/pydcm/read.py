@@ -119,6 +119,10 @@ def read_metadata(path: Path) -> DicomMetadata:
     except (InvalidDicomError, OSError) as error:
         raise NotDicomError(f"{path} is not a readable DICOM file") from error
 
+    return _metadata_from_dataset(dataset, path)
+
+
+def _metadata_from_dataset(dataset: pydicom.Dataset, path: Path) -> DicomMetadata:
     echo_number = dataset.get("EchoNumbers")
     echo_time = dataset.get("EchoTime")
     frame_echo_numbers, frame_echo_times, frame_asl_contexts = _per_frame_values(dataset)
