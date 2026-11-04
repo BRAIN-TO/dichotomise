@@ -180,6 +180,7 @@ def _process_subject(
     used_labels: set[str],
     used_output_tokens: set[str],
     resolved_label: str,
+    keep_working_files: bool,
     keep_unzipped: bool,
     on_audit: Callable[[AuditResult], None] | None,
     on_stage: StageCallback | None,
@@ -329,9 +330,14 @@ def _process_subject(
 
     if keep_unzipped:
         final_dir = _final_dir_for(run, subject_label, output_token)
+        final_dir.parent.mkdir(parents=True, exist_ok=True)
         _run_stage(
             f"{subject_prefix}: keeping the final files unzipped",
-            lambda: shutil.copytree(finalise_result.source_dir, final_dir),
+            lambda: (
+                shutil.copytree(finalise_result.source_dir, final_dir)
+                if keep_working_files
+                else finalise_result.source_dir.rename(final_dir)
+            ),
             on_stage,
         )
 
@@ -435,6 +441,7 @@ def run_pipeline(
                 used_labels=used_labels,
                 used_output_tokens=used_output_tokens,
                 resolved_label=resolved_label,
+                keep_working_files=keep_working_files,
                 keep_unzipped=keep_unzipped,
                 on_audit=on_audit,
                 on_stage=on_stage,

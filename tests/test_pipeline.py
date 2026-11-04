@@ -173,6 +173,20 @@ def test_run_pipeline_keeps_the_final_tree_unzipped_when_requested(
     assert not run.working_dir.exists()
 
 
+def test_keep_unzipped_moves_tree_without_copying(
+    tmp_path: Path, make_dicom_file: Callable[..., Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "export"
+    make_dicom_file(source / "series" / "1.dcm")
+
+    def reject_copy(*args: object, **kwargs: object) -> None:
+        raise AssertionError("The final tree should be moved")
+
+    monkeypatch.setattr(shutil, "copytree", reject_copy)
+    run = run_pipeline(source, tmp_path / "out", keep_unzipped=True)
+    assert len(list(run.final_dir.rglob("*.dcm"))) == 1
+
+
 def test_run_pipeline_without_keep_unzipped_creates_no_final_dir(
     tmp_path: Path, make_dicom_file: Callable[..., Path]
 ) -> None:
