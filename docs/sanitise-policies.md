@@ -88,6 +88,13 @@ files disagreeing on either would look like data corruption. This is done
 with a cache the caller keeps for the whole run (`replacement_cache` in
 `apply_policy()`), not by anything in the policy file itself.
 
+The replacement cache is shared by retained and review files in one study.
+Known nested references to reissued identifiers use the same replacements;
+references between separately processed studies are not remapped together.
+Series folder names follow the effective `SeriesDescription` action, so a
+removed description is represented by `NA`. Source archives and provenance
+reports still contain source information and must be handled accordingly.
+
 `full.json` uses `"extends": "standard"` rather than repeating every
 `standard` entry: a full-policy run applies every `standard` action first,
 then applies `full`'s own list on top. `extends` can chain further —

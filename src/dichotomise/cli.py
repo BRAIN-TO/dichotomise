@@ -208,9 +208,8 @@ def _run_with_elapsed_ticker(run_started: float, work: Callable[[], _T]) -> _T:
     Only draws the ticker on an interactive terminal, for the same reason
     as `_log_archive_progress`: a redirected/CI log has no use for a line
     that rewrites itself, and `work()` still runs normally without it.
-    `work` (here, `run_pipeline()`) does its own logging via on_stage/
-    on_info/etc. from the background thread; Rich's `Live` is built to let
-    `console.print()` calls interleave cleanly above a live-updating line.
+    `work` runs on the main thread so keyboard interrupts reach the pipeline.
+    A background thread updates the elapsed-time display.
     """
     if not console.is_terminal:
         return work()

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import shutil
+import subprocess
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -10,6 +12,30 @@ from click.testing import CliRunner
 
 import dichotomise.cli as cli_module
 from dichotomise.cli import cli
+
+
+def test_interactive_interrupt_stops_work(tmp_path: Path) -> None:
+    marker = tmp_path / "finished"
+    script = """
+import importlib, os, signal, sys, threading, time
+from pathlib import Path
+from rich.console import Console
+cli = importlib.import_module('dichotomise.cli')
+cli.console = Console(force_terminal=True)
+def work():
+    threading.Timer(0.1, lambda: os.kill(os.getpid(), signal.SIGINT)).start()
+    time.sleep(1)
+    Path(sys.argv[1]).write_text('finished')
+try:
+    cli._run_with_elapsed_ticker(time.monotonic(), work)
+except KeyboardInterrupt:
+    pass
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(marker)], capture_output=True, timeout=5, check=False
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    assert not marker.exists()
 
 
 def test_cli_runs_end_to_end_and_reports_the_archives(

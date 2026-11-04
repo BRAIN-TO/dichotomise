@@ -1,8 +1,7 @@
 """Stage 2: tar.gz + checksum the untouched, original source files (archives/).
 
-Archives each subject's files straight from the source directory, before
-anything else is read from or written to them, so a copy made by a later
-stage can never silently diverge from what this archive preserves.
+Archives each subject's files straight from the source directory after
+capture has read their headers. Source files are not modified.
 """
 
 from __future__ import annotations

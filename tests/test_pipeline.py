@@ -202,6 +202,34 @@ def test_sanitise_without_working_files_skips_rectified_copies(
     assert len(list(run.archives_dir.glob("*dichotomised-archive*.tar.gz"))) == 1
 
 
+@pytest.mark.parametrize("sanitised", [False, True])
+@pytest.mark.parametrize("keep_working", [False, True])
+@pytest.mark.parametrize("keep_unzipped", [False, True])
+def test_pipeline_output_options(
+    tmp_path: Path,
+    make_dicom_file: Callable[..., Path],
+    sanitised: bool,
+    keep_working: bool,
+    keep_unzipped: bool,
+) -> None:
+    source = tmp_path / "export"
+    make_dicom_file(source / "series" / "1.dcm")
+    run = run_pipeline(
+        source,
+        tmp_path / "out",
+        sanitise_requested=sanitised,
+        keep_working_files=keep_working,
+        keep_unzipped=keep_unzipped,
+    )
+    assert len(list(run.archives_dir.glob("*dichotomised-archive*.tar.gz"))) == 1
+    assert run.working_dir.exists() is keep_working
+    assert run.final_dir.exists() is keep_unzipped
+    if keep_working and keep_unzipped:
+        working = next(run.working_dir.rglob("*.dcm"))
+        final = next(run.final_dir.rglob("*.dcm"))
+        assert working.stat().st_ino != final.stat().st_ino
+
+
 def test_run_pipeline_without_keep_unzipped_creates_no_final_dir(
     tmp_path: Path, make_dicom_file: Callable[..., Path]
 ) -> None:
