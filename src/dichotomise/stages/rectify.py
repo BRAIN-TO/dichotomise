@@ -11,7 +11,7 @@ import shutil
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from dichotomise.errors import NamingCollisionError
+from dichotomise.errors import FinaliseVerificationError, NamingCollisionError
 from dichotomise.pydcm.identify import file_digest
 from dichotomise.pydcm.naming import rectified_path
 from dichotomise.pydcm.read import DicomMetadata
@@ -41,6 +41,12 @@ def rectify(sift_result: SiftResult, *, describe_series: bool = True) -> Rectify
     file the name belongs to, so it stops the run rather than silently
     picking one or numbering around it.
     """
+    return _rectify(sift_result, {}, describe_series=describe_series)
+
+
+def _rectify(
+    sift_result: SiftResult, digests: dict[Path, str], *, describe_series: bool = True
+) -> RectifyResult:
     rectified_dir = sift_result.subject.working_dir / "rectify"
     occupied: dict[Path, DicomMetadata] = {}
     files: list[DicomMetadata] = []
@@ -50,7 +56,7 @@ def rectify(sift_result: SiftResult, *, describe_series: bool = True) -> Rectify
     for metadata in sift_result.retained:
         target = rectified_path(rectified_dir, metadata, describe_series=describe_series)
         if target in occupied:
-            if file_digest(occupied[target].path) != file_digest(metadata.path):
+            if file_digest(occupied[target].path, digests) != file_digest(metadata.path, digests):
                 raise NamingCollisionError(
                     f"Two different scan files would both be named {target.name}: "
                     f"{occupied[target].path} and {metadata.path}"
@@ -60,6 +66,8 @@ def rectify(sift_result: SiftResult, *, describe_series: bool = True) -> Rectify
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(metadata.path, target)
+        if file_digest(metadata.path, digests) != file_digest(target):
+            raise FinaliseVerificationError(f"Copied file differs from its source: {target}")
         occupied[target] = metadata
         target_by_source[metadata.path] = target
         files.append(replace(metadata, path=target))
@@ -96,6 +104,12 @@ def rectify_review(sift_result: SiftResult, *, describe_series: bool = True) -> 
     differ keeps a disambiguated name (`-dup01`, `-dup02`, ...) instead of
     being silently dropped or overwritten.
     """
+    return _rectify_review(sift_result, {}, describe_series=describe_series)
+
+
+def _rectify_review(
+    sift_result: SiftResult, digests: dict[Path, str], *, describe_series: bool = True
+) -> RectifyReviewResult:
     review_rectified_dir = sift_result.subject.working_dir / "review-rectify"
     written: dict[Path, list[Path]] = {}
     files: list[DicomMetadata] = []
@@ -107,9 +121,9 @@ def rectify_review(sift_result: SiftResult, *, describe_series: bool = True) -> 
         target = rectified_path(
             review_rectified_dir, item.metadata, describe_series=describe_series
         )
-        digest = file_digest(item.metadata.path)
+        digest = file_digest(item.metadata.path, digests)
         previous = written.setdefault(target, [])
-        matched = next((path for path in previous if file_digest(path) == digest), None)
+        matched = next((path for path in previous if file_digest(path, digests) == digest), None)
         if matched is not None:
             merged_identical_count += 1
             target_by_source[item.metadata.path] = target_by_source[matched]
@@ -122,6 +136,8 @@ def rectify_review(sift_result: SiftResult, *, describe_series: bool = True) -> 
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(item.metadata.path, target)
         target_by_source[item.metadata.path] = target
+        if digest != file_digest(target):
+            raise FinaliseVerificationError(f"Copied review file differs from its source: {target}")
         files.append(replace(item.metadata, path=target))
 
     return RectifyReviewResult(

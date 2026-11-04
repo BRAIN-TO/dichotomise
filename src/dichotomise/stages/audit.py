@@ -162,7 +162,9 @@ def _series_folders(files_by_folder: Mapping[Path, Sequence[DicomMetadata]]) -> 
     return series_folder
 
 
-def _audit_files(files: Sequence[DicomMetadata], subject: CapturedSubject) -> AuditResult:
+def _audit_files(
+    files: Sequence[DicomMetadata], subject: CapturedSubject, digests: dict[Path, str] | None = None
+) -> AuditResult:
     """Compute audit findings for a subject's DICOM files, wherever they sit on disk."""
     files_by_folder: dict[Path, list[Path]] = defaultdict(list)
     metadata_by_folder: dict[Path, list[DicomMetadata]] = defaultdict(list)
@@ -177,7 +179,7 @@ def _audit_files(files: Sequence[DicomMetadata], subject: CapturedSubject) -> Au
     if not metadata_by_path:
         raise NoDicomFilesFoundError(f"No DICOM files were found for subject {subject.subject_id}")
 
-    digests: dict[Path, str] = {}
+    digests = {} if digests is None else digests
     sop_conflicts = find_sop_conflicts(files, digests)
 
     duplicate_of: dict[Path, Path] = {}

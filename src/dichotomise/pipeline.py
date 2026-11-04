@@ -10,7 +10,7 @@ from secrets import token_hex
 from time import monotonic
 from typing import TypeVar
 
-from dichotomise.errors import RelabelError
+from dichotomise.errors import RelabelError, UnsafeSourceError
 from dichotomise.pydcm.names import generate_name
 from dichotomise.pydcm.relabel import (
     Policy,
@@ -19,10 +19,10 @@ from dichotomise.pydcm.relabel import (
     validate_label,
 )
 from dichotomise.run import Run, start_run
-from dichotomise.stages.audit import AuditResult, audit
+from dichotomise.stages.audit import AuditResult, _audit_files
 from dichotomise.stages.capture import CapturedSubject, capture
-from dichotomise.stages.finalise import finalise, finalise_review
-from dichotomise.stages.rectify import rectify, rectify_review
+from dichotomise.stages.finalise import _finalise, finalise_review
+from dichotomise.stages.rectify import _rectify, _rectify_review
 from dichotomise.stages.reports import (
     pseudonymised_audit,
     pseudonymous_source_names,
@@ -37,7 +37,7 @@ from dichotomise.stages.reports import (
 )
 from dichotomise.stages.sanitise import sanitise, sanitise_review
 from dichotomise.stages.sift import sift
-from dichotomise.stages.source_archive import source_archive
+from dichotomise.stages.source_archive import _source_archive
 from dichotomise.utils.archive import Archive
 from dichotomise.utils.text import safe_filename_text
 
@@ -149,20 +149,37 @@ def _archive_source_subject(
     run: Run,
     description: str,
     on_archive_progress: ArchiveProgressCallback | None,
-) -> Archive:
+) -> tuple[Archive, dict[Path, str], dict[Path, tuple[int, int, int, int, int]]]:
     """Archive one captured study before it is audited or transformed."""
     on_progress = (
         (lambda done, total: on_archive_progress(description, done, total))
         if on_archive_progress is not None
         else None
     )
-    return source_archive(subject, run, on_progress=on_progress)
+    fingerprints = {item.path: _fingerprint(item.path) for item in subject.files}
+    digests: dict[Path, str] = {}
+    archive = _source_archive(subject, run, on_progress=on_progress, source_digests=digests)
+    _check_sources(fingerprints)
+    return archive, digests, fingerprints
 
 
 def _source_map_path(source_archive_path: Path) -> Path:
     """Name the source map after the source archive it sits beside."""
     stem = source_archive_path.name.removesuffix(".tar.gz")
     return source_archive_path.with_name(stem.replace("_source-archive_", "_source-map_") + ".csv")
+
+
+def _fingerprint(path: Path) -> tuple[int, int, int, int, int]:
+    """Identify a file's on-disk state, so a later change can be detected."""
+    stat = path.stat()
+    return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
+
+
+def _check_sources(fingerprints: dict[Path, tuple[int, int, int, int, int]]) -> None:
+    """Stop the run if any source file changed since it was archived."""
+    for path, expected in fingerprints.items():
+        if _fingerprint(path) != expected:
+            raise UnsafeSourceError(f"Source changed during processing: {path}")
 
 
 def _process_subject(
@@ -173,6 +190,8 @@ def _process_subject(
     sanitise_requested: bool,
     sanitise_level: str,
     policy: Policy | None,
+    source_digests: dict[Path, str],
+    source_fingerprints: dict[Path, tuple[int, int, int, int, int]],
     used_output_tokens: set[str],
     resolved_label: str,
     keep_working_files: bool,
@@ -202,7 +221,12 @@ def _process_subject(
         return lambda done, total: on_archive_progress(description, done, total)
 
     subject_prefix = f"Study {subject.output_number}"
-    audit_result = _run_stage(f"{subject_prefix}: auditing", lambda: audit(subject), on_stage)
+    _check_sources(source_fingerprints)
+    audit_result = _run_stage(
+        f"{subject_prefix}: auditing",
+        lambda: _audit_files(subject.files, subject, source_digests),
+        on_stage,
+    )
     if on_audit is not None:
         on_audit(audit_result)
     write_audit_report(
@@ -222,14 +246,15 @@ def _process_subject(
     if names:
         write_source_map(source_map_path, sift_result, names)
 
+    _check_sources(source_fingerprints)
     rectify_result = _run_stage(
         f"{subject_prefix}: rectifying retained files",
-        lambda: rectify(sift_result, describe_series=describe_series),
+        lambda: _rectify(sift_result, source_digests, describe_series=describe_series),
         on_stage,
     )
     rectify_review_result = _run_stage(
         f"{subject_prefix}: renaming review files",
-        lambda: rectify_review(sift_result, describe_series=describe_series),
+        lambda: _rectify_review(sift_result, source_digests, describe_series=describe_series),
         on_stage,
     )
 
@@ -283,15 +308,17 @@ def _process_subject(
     )
 
     finalise_description = f"{subject_prefix}: creating verified archive"
+    _check_sources(source_fingerprints)
     finalise_result = _run_stage(
         finalise_description,
-        lambda: finalise(
+        lambda: _finalise(
             rectify_result,
             run,
             subject_label=subject_label,
             sanitise_result=sanitise_result,
             archive_token=output_token,
             on_progress=_bind_progress(finalise_description),
+            source_digests=source_digests,
         ),
         on_stage,
     )
@@ -411,7 +438,7 @@ def run_pipeline(
         policy = load_policy(sanitise_level) if sanitise_requested else None
         for subject, resolved_label in zip(subjects, labels, strict=True):
             archive_source_description = f"Study {subject.output_number}: archiving source DICOMs"
-            source_archive_result = _run_stage(
+            source_archive_result, source_digests, source_fingerprints = _run_stage(
                 archive_source_description,
                 partial(
                     _archive_source_subject,
@@ -429,6 +456,8 @@ def run_pipeline(
                 sanitise_requested=sanitise_requested,
                 sanitise_level=sanitise_level,
                 policy=policy,
+                source_digests=source_digests,
+                source_fingerprints=source_fingerprints,
                 used_output_tokens=used_output_tokens,
                 resolved_label=resolved_label,
                 keep_working_files=keep_working_files,

@@ -2,17 +2,31 @@
 
 from __future__ import annotations
 
+import hashlib
 import shutil
 import subprocess
 import tarfile
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import BinaryIO
 
 from dichotomise.errors import ArchiveCreationError, ArchiveVerificationError
 from dichotomise.utils import fs
 
 ProgressCallback = Callable[[int, int], None]
+
+
+class _HashingReader:
+    def __init__(self, source: BinaryIO) -> None:
+        self.source = source
+        self.hasher = hashlib.sha256()
+
+    def read(self, size: int = -1) -> bytes:
+        data = self.source.read(size)
+        self.hasher.update(data)
+        return data
+
 
 # gzip's own default, kept the same whichever compressor ends up writing.
 _GZIP_COMPRESSLEVEL = 9
@@ -101,6 +115,7 @@ def _add_entries(
     entries: Sequence[tuple[Path, Path]],
     total_bytes: int,
     on_progress: ProgressCallback | None,
+    source_digests: dict[Path, str] | None = None,
 ) -> None:
     """Add each (path, arcname) entry to an already-open `tar`.
 
@@ -113,7 +128,30 @@ def _add_entries(
         # recursive=False: each entry already comes from our own walk (files
         # and folders both), so letting tar.add() recurse into a folder
         # would add every file inside it a second time.
-        tar.add(path, arcname=arcname, recursive=False)
+        if source_digests is not None and path.is_file():
+            before = path.stat()
+            info = tar.gettarinfo(str(path), arcname=str(arcname))
+            with path.open("rb") as source:
+                reader = _HashingReader(source)
+                tar.addfile(info, reader)
+            after = path.stat()
+            if (
+                before.st_dev,
+                before.st_ino,
+                before.st_size,
+                before.st_mtime_ns,
+                before.st_ctime_ns,
+            ) != (
+                after.st_dev,
+                after.st_ino,
+                after.st_size,
+                after.st_mtime_ns,
+                after.st_ctime_ns,
+            ):
+                raise ArchiveCreationError(f"Source changed during archiving: {path}")
+            source_digests[path] = reader.hasher.hexdigest()
+        else:
+            tar.add(path, arcname=arcname, recursive=False)
         if path.is_file():
             written_bytes += path.stat().st_size
             if on_progress is not None:
@@ -126,6 +164,7 @@ def _write_tarball_with_pigz(
     archive_path: Path,
     total_bytes: int,
     on_progress: ProgressCallback | None,
+    source_digests: dict[Path, str] | None = None,
 ) -> None:
     """Pipe an uncompressed tar stream through `pigz` (parallel gzip) to `archive_path`.
 
@@ -142,7 +181,7 @@ def _write_tarball_with_pigz(
         assert stdin is not None  # guaranteed by stdin=subprocess.PIPE above
         try:
             with tarfile.open(fileobj=stdin, mode="w|") as tar:
-                _add_entries(tar, entries, total_bytes, on_progress)
+                _add_entries(tar, entries, total_bytes, on_progress, source_digests)
         finally:
             stdin.close()
             return_code = process.wait()
@@ -156,6 +195,7 @@ def _write_tarball(
     entries: Iterable[tuple[Path, Path]],
     archive_path: Path,
     on_progress: ProgressCallback | None,
+    source_digests: dict[Path, str] | None = None,
 ) -> Archive:
     """Write every (path, arcname) entry into a new tarball at `archive_path`.
 
@@ -170,10 +210,12 @@ def _write_tarball(
 
     pigz = pigz_path()
     if pigz is not None:
-        _write_tarball_with_pigz(pigz, sorted_entries, archive_path, total_bytes, on_progress)
+        _write_tarball_with_pigz(
+            pigz, sorted_entries, archive_path, total_bytes, on_progress, source_digests
+        )
     else:
         with tarfile.open(archive_path, "w:gz", compresslevel=_GZIP_COMPRESSLEVEL) as tar:
-            _add_entries(tar, sorted_entries, total_bytes, on_progress)
+            _add_entries(tar, sorted_entries, total_bytes, on_progress, source_digests)
 
     return _finish_archive(archive_path)
 

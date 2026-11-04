@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from dichotomise.errors import RelabelError
+from dichotomise.errors import RelabelError, UnsafeSourceError
 from dichotomise.pipeline import run_pipeline
 
 
@@ -251,6 +251,21 @@ def test_numbering_overflow_fails_before_archiving(
             source, out_dir, sanitise_requested=True, label_mode="numerical", subject_id="9999"
         )
     assert not list(out_dir.rglob("*.tar.gz"))
+
+
+def test_changed_source_is_rejected_after_archiving(
+    tmp_path: Path, make_dicom_file: Callable[..., Path]
+) -> None:
+    source = tmp_path / "export"
+    scan = make_dicom_file(source / "series" / "1.dcm")
+
+    def change_source(status: str, description: str, elapsed: float) -> None:
+        if status == "completed" and description.endswith("archiving source DICOMs"):
+            with scan.open("ab") as handle:
+                handle.write(b"changed")
+
+    with pytest.raises(UnsafeSourceError):
+        run_pipeline(source, tmp_path / "out", on_stage=change_source)
 
 
 def test_run_pipeline_sanitise_numerical_mode_without_subject_id_raises(

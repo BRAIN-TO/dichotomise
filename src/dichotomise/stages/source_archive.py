@@ -12,7 +12,7 @@ from secrets import token_hex
 
 from dichotomise.run import Run
 from dichotomise.stages.capture import CapturedSubject
-from dichotomise.utils.archive import Archive, ProgressCallback, make_tarball_from_files
+from dichotomise.utils.archive import Archive, ProgressCallback, _write_tarball
 from dichotomise.utils.text import safe_filename_text
 
 
@@ -32,7 +32,16 @@ def source_archive(
     subject: CapturedSubject, run: Run, *, on_progress: ProgressCallback | None = None
 ) -> Archive:
     """Archive one subject's original source files, by their path under `source_root`."""
-    paths = [metadata.path for metadata in subject.files]
-    return make_tarball_from_files(
-        paths, subject.source_root, _study_archive_path(subject, run), on_progress=on_progress
-    )
+    return _source_archive(subject, run, on_progress=on_progress)
+
+
+def _source_archive(
+    subject: CapturedSubject,
+    run: Run,
+    *,
+    on_progress: ProgressCallback | None = None,
+    source_digests: dict[Path, str] | None = None,
+) -> Archive:
+    paths = sorted(metadata.path for metadata in subject.files)
+    entries = ((path, path.relative_to(subject.source_root)) for path in paths)
+    return _write_tarball(entries, _study_archive_path(subject, run), on_progress, source_digests)

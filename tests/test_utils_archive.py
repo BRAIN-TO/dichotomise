@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import shutil
 import tarfile
 from pathlib import Path
@@ -48,6 +49,18 @@ def test_make_tarball_from_files_reports_progress(tmp_path: Path) -> None:
     make_tarball_from_files([file_a], source, archive_path, on_progress=record)
 
     assert updates == [(10, 10)]
+
+
+def test_source_digests_match_archived_file_contents(tmp_path: Path) -> None:
+    source = _make_source(tmp_path) / "series-a" / "1.dcm"
+    digests: dict[Path, str] = {}
+    archive = archive_module._write_tarball(
+        [(source, Path("1.dcm"))], tmp_path / "archive.tar.gz", None, digests
+    )
+    with tarfile.open(archive.path) as tar:
+        member = tar.extractfile("1.dcm")
+        assert member is not None
+        assert digests[source] == hashlib.sha256(member.read()).hexdigest()
 
 
 def test_make_tarball_creates_an_archive_containing_the_original_files(tmp_path: Path) -> None:

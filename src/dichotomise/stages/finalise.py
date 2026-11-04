@@ -111,6 +111,26 @@ def finalise(
     and a per-run study number. The number prevents one study from replacing
     another when their other filename fields match.
     """
+    return _finalise(
+        rectify_result,
+        run,
+        subject_label=subject_label,
+        sanitise_result=sanitise_result,
+        archive_token=archive_token,
+        on_progress=on_progress,
+    )
+
+
+def _finalise(
+    rectify_result: RectifyResult,
+    run: Run,
+    *,
+    subject_label: str,
+    sanitise_result: SanitiseResult | None = None,
+    archive_token: str | None = None,
+    on_progress: ProgressCallback | None = None,
+    source_digests: dict[Path, str] | None = None,
+) -> FinaliseResult:
     source_dir = sanitise_result.sanitised_dir if sanitise_result else rectify_result.rectified_dir
     expected_files = (
         sanitise_result.files if sanitise_result else [item.path for item in rectify_result.files]
@@ -124,7 +144,9 @@ def finalise(
     if sanitise_result is None:
         for item in rectify_result.files:
             original = source_by_target.get(item.path)
-            if original is not None and file_digest(original) != file_digest(item.path):
+            if original is not None and file_digest(original, source_digests) != file_digest(
+                item.path
+            ):
                 raise FinaliseVerificationError(f"Copied file differs from its source: {item.path}")
     else:
         for item, output in zip(rectify_result.files, sanitise_result.files, strict=True):
