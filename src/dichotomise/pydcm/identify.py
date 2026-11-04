@@ -2,28 +2,19 @@
 
 from __future__ import annotations
 
-import hashlib
 from collections import Counter
 from collections.abc import Iterable, Mapping, MutableMapping, Sequence
 from pathlib import Path
 from typing import Any, TypeVar
 
 from dichotomise.pydcm.read import DicomMetadata
+from dichotomise.utils import fs
 from dichotomise.utils.text import natural_sort_key
 
 
 def file_digest(path: Path, cache: MutableMapping[Path, str] | None = None) -> str:
     """SHA-256 of the file's raw bytes: equal only for byte-for-byte copies."""
-    if cache is not None and path in cache:
-        return cache[path]
-    hasher = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1 << 20), b""):
-            hasher.update(chunk)
-    digest = hasher.hexdigest()
-    if cache is not None:
-        cache[path] = digest
-    return digest
+    return fs.file_digest(path, cache)
 
 
 def find_duplicate_pairs(

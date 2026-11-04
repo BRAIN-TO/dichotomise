@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import shutil
 import subprocess
 import tarfile
@@ -11,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from dichotomise.errors import ArchiveCreationError, ArchiveVerificationError
+from dichotomise.utils import fs
 
 ProgressCallback = Callable[[int, int], None]
 
@@ -43,11 +43,7 @@ def _checksum_path_for(archive_path: Path) -> Path:
 
 
 def _sha256_of(path: Path) -> str:
-    hasher = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            hasher.update(chunk)
-    return hasher.hexdigest()
+    return fs.file_digest(path)
 
 
 def _finish_archive(archive_path: Path) -> Archive:
