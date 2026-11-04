@@ -437,17 +437,47 @@ def describe_findings(
     return notes
 
 
-def folder_notes(audit_result: AuditResult) -> list[FolderNote]:
-    """Notes for every folder that has any, imaging series first, PR/SR folders last."""
+@dataclass(frozen=True)
+class _FolderSummary:
+    folder: Path
+    files: list[AuditedFile]
+    inconsistencies: list[str]
+    duplicate_count: int
+    misfiled_count: int
+    conflict_count: int
+    low_priority: bool
+    notes: list[str]
+
+
+def _folder_summaries(audit_result: AuditResult) -> list[_FolderSummary]:
     files_by_folder: dict[Path, list[AuditedFile]] = defaultdict(list)
     for file in audit_result.files:
         files_by_folder[file.folder].append(file)
-    result = []
+    result: list[_FolderSummary] = []
     for folder, files in sorted(
         files_by_folder.items(), key=lambda item: (natural_sort_key(item[0].name), item[0])
     ):
         low_priority = all(f.metadata.modality in _LOW_PRIORITY_MODALITIES for f in files)
-        texts = describe_findings(files, compact_duplicates=low_priority)
-        if texts:
-            result.append(FolderNote(folder.name, texts, low_priority))
+        result.append(
+            _FolderSummary(
+                folder,
+                files,
+                metadata_inconsistencies(files),
+                sum(file.is_duplicate for file in files),
+                sum(file.is_misfiled for file in files),
+                sum(file.is_sop_conflict for file in files),
+                low_priority,
+                describe_findings(files, compact_duplicates=low_priority),
+            )
+        )
+    return result
+
+
+def folder_notes(audit_result: AuditResult) -> list[FolderNote]:
+    """Notes for every folder that has any, imaging series first, PR/SR folders last."""
+    result = [
+        FolderNote(summary.folder.name, summary.notes, summary.low_priority)
+        for summary in _folder_summaries(audit_result)
+        if summary.notes
+    ]
     return sorted(result, key=lambda note: note.low_priority)

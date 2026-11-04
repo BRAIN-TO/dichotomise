@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tarfile
 from collections.abc import Callable, Iterable, Sequence
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
@@ -184,10 +185,8 @@ def _write_tarball_with_pigz(
                 _add_entries(tar, entries, total_bytes, on_progress, source_digests)
         except BaseException:
             process.terminate()
-            try:
+            with suppress(OSError):
                 stdin.close()
-            except OSError:
-                pass
             try:
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:

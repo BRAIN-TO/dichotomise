@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from collections import defaultdict
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -31,13 +30,13 @@ from dichotomise.run import Run
 from dichotomise.stages.audit import (
     AuditedFile,
     AuditResult,
+    _folder_summaries,
+    _FolderSummary,
     audit_directory,
     folder_notes,
-    metadata_inconsistencies,
 )
 from dichotomise.utils.archive import pigz_path
 from dichotomise.utils.console import console, error, success
-from dichotomise.utils.text import natural_sort_key
 
 _T = TypeVar("_T")
 
@@ -277,12 +276,12 @@ def _log_archive_progress(description: str, done: int, total: int) -> None:
     console.file.flush()
 
 
-def _audit_reasons(files: list[AuditedFile]) -> list[str]:
+def _audit_reasons(summary: _FolderSummary) -> list[str]:
     """Return the per-folder data-quality and structural findings."""
-    reasons = [f"{field} varies" for field in metadata_inconsistencies(files)]
-    duplicate_count = sum(file.is_duplicate for file in files)
-    misfiled_count = sum(file.is_misfiled for file in files)
-    conflict_count = sum(file.is_sop_conflict for file in files)
+    reasons = [f"{field} varies" for field in summary.inconsistencies]
+    duplicate_count = summary.duplicate_count
+    misfiled_count = summary.misfiled_count
+    conflict_count = summary.conflict_count
     if duplicate_count:
         suffix = "file" if duplicate_count == 1 else "files"
         reasons.append(f"{duplicate_count} duplicate {suffix}")
@@ -315,24 +314,18 @@ def _print_subject_audits(source_dir: Path) -> None:
 
 def _print_audit_table(audit_result: AuditResult) -> None:
     """Render every captured series with its structural and metadata findings."""
-    files_by_folder: dict[Path, list[AuditedFile]] = defaultdict(list)
-    for file in audit_result.files:
-        files_by_folder[file.folder].append(file)
-
     table = Table(title="DICOM inventory", show_lines=False)
     table.add_column("Series folder", overflow="fold")
     table.add_column("DICOMs", justify="right")
     table.add_column("Modified")
     table.add_column("Check")
     table.add_column("Why", overflow="fold")
-    for folder, files in sorted(
-        files_by_folder.items(), key=lambda item: (natural_sort_key(item[0].name), item[0])
-    ):
-        reasons = _audit_reasons(files)
+    for summary in _folder_summaries(audit_result):
+        reasons = _audit_reasons(summary)
         table.add_row(
-            folder.name,
-            str(len(files)),
-            _latest_modified(files),
+            summary.folder.name,
+            str(len(summary.files)),
+            _latest_modified(summary.files),
             "[green]Pass[/]" if not reasons else "[red]Failed[/]",
             "; ".join(reasons) if reasons else "—",
         )

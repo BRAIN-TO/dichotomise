@@ -21,8 +21,7 @@ from dichotomise.pydcm.read import DicomMetadata
 from dichotomise.stages.audit import (
     AuditedFile,
     AuditResult,
-    describe_findings,
-    metadata_inconsistencies,
+    _folder_summaries,
 )
 from dichotomise.stages.capture import CapturedSubject
 from dichotomise.stages.finalise import FinaliseResult
@@ -134,31 +133,23 @@ def _write(reports_dir: Path, filename: str, data: dict[str, object]) -> Path:
 
 def _audit_series_rows(audit_result: AuditResult) -> list[dict[str, object]]:
     """Summarise structural and metadata findings for each physical DICOM folder."""
-    files_by_folder: dict[Path, list[AuditedFile]] = {}
-    for audited_file in audit_result.files:
-        files_by_folder.setdefault(audited_file.folder, []).append(audited_file)
-
     rows: list[dict[str, object]] = []
-    for folder, files in sorted(
-        files_by_folder.items(), key=lambda item: (natural_sort_key(item[0].name), item[0])
-    ):
-        inconsistencies = metadata_inconsistencies(files)
-        duplicate_count = sum(file.is_duplicate for file in files)
-        misfiled_count = sum(file.is_misfiled for file in files)
-        conflict_count = sum(file.is_sop_conflict for file in files)
-        low_priority = all(f.metadata.modality in {"PR", "SR"} for f in files)
+    for summary in _folder_summaries(audit_result):
         rows.append(
             {
-                "series_folder": folder.name,
-                "dicom_count": len(files),
-                "duplicate_count": duplicate_count,
-                "misfiled_count": misfiled_count,
-                "sop_conflict_count": conflict_count,
-                "metadata_inconsistencies": "; ".join(inconsistencies),
+                "series_folder": summary.folder.name,
+                "dicom_count": len(summary.files),
+                "duplicate_count": summary.duplicate_count,
+                "misfiled_count": summary.misfiled_count,
+                "sop_conflict_count": summary.conflict_count,
+                "metadata_inconsistencies": "; ".join(summary.inconsistencies),
                 "status": "flagged"
-                if duplicate_count or misfiled_count or conflict_count or inconsistencies
+                if summary.duplicate_count
+                or summary.misfiled_count
+                or summary.conflict_count
+                or summary.inconsistencies
                 else "pass",
-                "notes": describe_findings(files, compact_duplicates=low_priority),
+                "notes": summary.notes,
             }
         )
     return rows
