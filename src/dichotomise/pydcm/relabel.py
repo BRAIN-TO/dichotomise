@@ -7,7 +7,7 @@ import json
 import random
 import re
 from collections import defaultdict
-from collections.abc import Callable, Iterator, MutableMapping
+from collections.abc import Callable, Iterable, Iterator, MutableMapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -445,6 +445,33 @@ def _sync_file_meta_sop_instance_uid(dataset: Dataset) -> None:
         file_meta.MediaStorageSOPInstanceUID = dataset.SOPInstanceUID
 
 
+def _regenerated_fields(policy: Policy) -> list[str]:
+    """The fields a policy gives newly generated identifiers."""
+    return [field for field, found in policy.actions.items() if found["action"] == "regenerate"]
+
+
+def seed_regenerated_uids(
+    paths: Iterable[Path], policy: Policy, replacement_cache: MutableMapping[str, str]
+) -> None:
+    """Reissue, before any file is sanitised, every UID a partial policy regenerates.
+
+    A partial policy (some UIDs regenerated, but not SOPInstanceUID) only changes references
+    to UIDs it regenerates. Seeding the cache from every file's header first means a reference
+    is replaced even when the file it points at is sanitised later, or in the other of the
+    retained and review sets. Other policies need no seeding and this returns at once.
+    """
+    regenerated = _regenerated_fields(policy)
+    if not regenerated or "SOPInstanceUID" in regenerated:
+        return
+    for path in paths:
+        dataset = pydicom.dcmread(path, stop_before_pixels=True)
+        index = _index_by_tag(dataset)
+        for field in regenerated:
+            tag = tag_for_keyword(field)
+            for holder in [dataset, *(index.get(tag, ()) if tag else ())]:
+                _regenerate_field(holder, field, replacement_cache)
+
+
 def apply_policy(
     dataset: Dataset,
     policy: Policy,
@@ -494,15 +521,16 @@ def apply_policy(
     # or references would point at files that no longer exist. Fields the policy names
     # itself keep their own action. A policy that reissues only some UIDs (say the study
     # and frame of reference) just has its references follow those: a reference to a UID
-    # it keeps stays as it is.
-    # shortcut: a reference to a UID that a later file regenerates keeps its original value,
-    # upgrade if partial policies with cross-series references appear
-    if any(found["action"] == "regenerate" for found in policy.actions.values()):
+    # it keeps stays as it is. `seed_regenerated_uids` has already put every UID such a
+    # policy regenerates in the cache, so the result does not depend on file order.
+    regenerated = _regenerated_fields(policy)
+    if regenerated:
         explicit = {
             field for field, found in policy.actions.items() if found["action"] != "regenerate"
         }
-        reissues_sop = policy.actions.get("SOPInstanceUID", {}).get("action") == "regenerate"
-        _remap_remaining_uids(index, explicit, replacement_cache, follow_only=not reissues_sop)
+        _remap_remaining_uids(
+            index, explicit, replacement_cache, follow_only="SOPInstanceUID" not in regenerated
+        )
     _sync_file_meta_sop_instance_uid(dataset)
 
 

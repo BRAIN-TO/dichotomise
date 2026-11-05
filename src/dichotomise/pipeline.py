@@ -16,6 +16,7 @@ from dichotomise.pydcm.relabel import (
     Policy,
     load_policy,
     normalise_numeric_label,
+    seed_regenerated_uids,
     validate_label,
 )
 from dichotomise.run import Run, start_run
@@ -277,6 +278,13 @@ def _process_subject(
     expected_identities: dict[Path, tuple[str, str]] | None = {} if policy is not None else None
     if policy is not None:
         replacement_cache: dict[str, str] = {}
+        # A partial policy needs every UID it regenerates known before the first file is written.
+        seed_regenerated_uids(
+            [item.path for item in sift_result.retained]
+            + [item.metadata.path for item in sift_result.review],
+            policy,
+            replacement_cache,
+        )
         sanitise_result = _run_stage(
             f"{subject_prefix}: sanitising files",
             lambda: sanitise(

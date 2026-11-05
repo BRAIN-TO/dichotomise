@@ -78,7 +78,7 @@ An action is one of:
   and coding-scheme UIDs, registry UIDs (`1.2.840.10008.*`) and any field the
   policy lists with a different action. A policy that regenerates some UIDs
   but not `SOPInstanceUID` leaves the others alone: references and private
-  elements that hold a UID it did regenerate follow it, and nothing else changes.
+  elements that hold a UID it did regenerate follow it, in any file of the study, and nothing else changes.
 - `"add"` — a field that isn't present by default gets added.
 - `"scramble_date"` — replaced with a random *but valid* date, shifted by
   exactly one year (chosen randomly as +1 or -1, never 0) from the real

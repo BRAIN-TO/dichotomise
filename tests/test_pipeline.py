@@ -16,6 +16,7 @@ import pytest
 import dichotomise.stages.capture as capture_module
 from dichotomise.errors import FinaliseVerificationError, RelabelError, UnsafeSourceError
 from dichotomise.pipeline import run_pipeline
+from dichotomise.pydcm.relabel import Policy
 
 
 def test_run_pipeline_produces_one_archive_per_subject_and_cleans_up_working_files(
@@ -1017,3 +1018,48 @@ def test_run_pipeline_finishes_when_every_file_of_a_subject_goes_to_review(
     assert sift_report["retained_count"] == 0
     assert sift_report["review_count"] == 2
     assert len(list(run.archives_dir.glob("*_review-archive_*.tar.gz"))) == 1
+
+
+def test_run_pipeline_partial_policy_follows_a_uid_only_a_review_file_regenerates(
+    tmp_path: Path, make_dicom_file: Callable[..., Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Retained files are sanitised before review ones, yet their references must still follow."""
+    frame = "1.2.7.7"
+    shared = {
+        "PatientID": "sub-01",
+        "StudyInstanceUID": "1.2.1",
+        "SeriesInstanceUID": "1.2.2",
+        "SeriesNumber": 21,
+        "SOPInstanceUID": "1.2.3.9",
+        "FrameOfReferenceUID": frame,
+    }
+    source = tmp_path / "export"
+    # The two files that share a SOP UID go to review; the third is retained and only
+    # refers to the frame of reference (in a private element) without holding it itself.
+    make_dicom_file(source / "021-DWI" / "1.dcm", InstanceNumber=1, **shared)
+    make_dicom_file(source / "021-DWI" / "2.dcm", InstanceNumber=1, ProtocolName="o", **shared)
+    retained = make_dicom_file(
+        source / "021-DWI" / "3.dcm",
+        PatientID="sub-01",
+        StudyInstanceUID="1.2.1",
+        SeriesInstanceUID="1.2.2",
+        SeriesNumber=21,
+        InstanceNumber=3,
+    )
+    dataset = pydicom.dcmread(retained)
+    dataset.add_new(0x00091010, "UI", frame)
+    dataset.save_as(retained)
+    policy = Policy(name="partial", actions={"FrameOfReferenceUID": {"action": "regenerate"}})
+    monkeypatch.setattr("dichotomise.pipeline.load_policy", lambda _name: policy)
+
+    run = run_pipeline(
+        source, tmp_path / "out", sanitise_requested=True, keep_unzipped=True, sanitise_level="x"
+    )
+
+    (final_file,) = run.final_dir.rglob("*.dcm")
+    (review_archive,) = run.archives_dir.glob("*_review-archive_*.tar.gz")
+    with tarfile.open(review_archive, "r:gz") as tar:
+        member = next(m for m in tar.getmembers() if m.isfile())
+        review_frame = pydicom.dcmread(tar.extractfile(member)).FrameOfReferenceUID
+    assert review_frame != frame
+    assert pydicom.dcmread(final_file)[0x00091010].value == review_frame

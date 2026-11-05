@@ -172,7 +172,7 @@ A policy that regenerates `SOPInstanceUID` remaps every UID value except class, 
 coding-scheme UIDs and the standard's registry UIDs (`1.2.840.10008.*`), which are shared
 by every site and stay as they are. A field the policy names itself follows its own action.
 A custom policy that regenerates some UIDs but not `SOPInstanceUID` reissues only those: references
-and private elements holding a regenerated UID follow it, and every other UID stays as it is.
+and private elements holding a regenerated UID follow it, in any file of the study, and every other UID stays as it is.
 The shipped policies keep private (vendor) elements, and some of those hold identifiers,
 UIDs included. Check them before you share sanitised data.
 
