@@ -10,7 +10,7 @@ from pydicom.errors import InvalidDicomError
 
 from dichotomise.errors import FinaliseVerificationError
 from dichotomise.pydcm.identify import file_digest
-from dichotomise.pydcm.read import _metadata_from_dataset, _pixel_fingerprint
+from dichotomise.pydcm.read import _metadata_from_dataset, _parallel_map, _pixel_fingerprint
 from dichotomise.run import Run
 from dichotomise.stages.capture import CapturedSubject
 from dichotomise.stages.rectify import (
@@ -72,6 +72,29 @@ def _verify_uncompressed_pixel_data(path: Path, dataset: pydicom.Dataset) -> Non
         )
 
 
+def _verify_file(
+    task: tuple[Path, tuple[object, ...] | None, tuple[str, str] | None],
+) -> None:
+    """Re-read one finished file and check it; a module-level function so a pool can run it.
+
+    `task` is the path with its recorded pixel fingerprint and identity, each None when that
+    check is not wanted. Raises `FinaliseVerificationError` on the first thing wrong.
+    """
+    path, expected_pixels, expected_identity = task
+    try:
+        dataset = pydicom.dcmread(path, force=False)
+        _metadata_from_dataset(dataset, path)
+    except (InvalidDicomError, OSError) as error:
+        raise FinaliseVerificationError(
+            f"{path} could not be read back after processing; the finished output may be corrupt"
+        ) from error
+    _verify_uncompressed_pixel_data(path, dataset)
+    if expected_pixels is not None and _pixel_fingerprint(dataset) != expected_pixels:
+        raise FinaliseVerificationError(f"Pixel data differs from its source: {path}")
+    if expected_identity is not None:
+        _verify_identity(dataset, path, expected_identity)
+
+
 def _verify_output_tree(
     expected_files: list[Path],
     output_dir: Path,
@@ -83,7 +106,8 @@ def _verify_output_tree(
     This deliberately re-reads the output tree from disk rather than trusting
     the file list the earlier stages produced, so that corruption introduced
     by a copy or rename step (a truncated file, a file that silently failed
-    to write) is caught here rather than archived as if it were correct.
+    to write) is caught here rather than archived as if it were correct. The
+    file list is compared here; the files are then read in a pool when there are many.
     """
     found_files = sorted(p for p in output_dir.rglob("*") if p.is_file())
     if set(found_files) != set(expected_files):
@@ -91,20 +115,17 @@ def _verify_output_tree(
             f"Expected {len(expected_files)} file(s) in the finished output, "
             f"but found {len(found_files)} in {output_dir}"
         )
-    for path in found_files:
-        try:
-            dataset = pydicom.dcmread(path, force=False)
-            _metadata_from_dataset(dataset, path)
-        except (InvalidDicomError, OSError) as error:
-            raise FinaliseVerificationError(
-                f"{path} could not be read back after processing; the finished output "
-                "may be corrupt"
-            ) from error
-        _verify_uncompressed_pixel_data(path, dataset)
-        if expected_pixels is not None and _pixel_fingerprint(dataset) != expected_pixels[path]:
-            raise FinaliseVerificationError(f"Pixel data differs from its source: {path}")
-        if expected_identities is not None:
-            _verify_identity(dataset, path, expected_identities[path])
+    _parallel_map(
+        _verify_file,
+        [
+            (
+                path,
+                None if expected_pixels is None else expected_pixels[path],
+                None if expected_identities is None else expected_identities[path],
+            )
+            for path in found_files
+        ],
+    )
 
 
 def _verify_identity(dataset: pydicom.Dataset, path: Path, expected: tuple[str, str]) -> None:
@@ -200,27 +221,40 @@ def finalise(
     )
 
 
+def _verify_review_file(task: tuple[Path, tuple[object, ...], tuple[str, str] | None]) -> None:
+    """Check one sanitised review file against its recorded fingerprint and identity (pool-safe)."""
+    output, expected_pixels, expected_identity = task
+    dataset = pydicom.dcmread(output)
+    if _pixel_fingerprint(dataset) != expected_pixels:
+        raise FinaliseVerificationError(f"Pixel data differs from its source: {output}")
+    if expected_identity is not None:
+        _verify_identity(dataset, output, expected_identity)
+
+
 def _verify_sanitised_review(
     rectify_review_result: RectifyReviewResult | RectifyReviewPlan,
     sanitise_review_result: SanitiseReviewResult,
     expected_pixels: dict[Path, tuple[object, ...]] | None,
     expected_identities: dict[Path, tuple[str, str]] | None,
 ) -> None:
-    """Check each sanitised review file against its source or the recorded fingerprints."""
+    """Check each sanitised review file against its source or the recorded fingerprints.
+
+    Without recorded fingerprints each file is compared with its source here; with them, the
+    files are re-read in a pool when there are many.
+    """
+    tasks = []
     for item, output in zip(rectify_review_result.files, sanitise_review_result.files, strict=True):
-        source = (
-            rectify_review_result.sources[item.path]
-            if isinstance(rectify_review_result, RectifyReviewPlan)
-            else item.path
-        )
         if expected_pixels is None:
+            source = (
+                rectify_review_result.sources[item.path]
+                if isinstance(rectify_review_result, RectifyReviewPlan)
+                else item.path
+            )
             _verify_pixel_data(source, output)
         else:
-            dataset = pydicom.dcmread(output)
-            if _pixel_fingerprint(dataset) != expected_pixels[output]:
-                raise FinaliseVerificationError(f"Pixel data differs from its source: {output}")
-            if expected_identities is not None:
-                _verify_identity(dataset, output, expected_identities[output])
+            identity = None if expected_identities is None else expected_identities[output]
+            tasks.append((output, expected_pixels[output], identity))
+    _parallel_map(_verify_review_file, tasks)
 
 
 def finalise_review(

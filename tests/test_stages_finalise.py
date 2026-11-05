@@ -7,11 +7,12 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pydicom
 import pytest
-from helpers import make_subject
+from helpers import force_pool, make_subject
 
 from dichotomise.errors import FinaliseVerificationError
-from dichotomise.pydcm.read import read_metadata
+from dichotomise.pydcm.read import _pixel_fingerprint, read_metadata
 from dichotomise.run import start_run
 from dichotomise.stages.finalise import finalise, finalise_review
 from dichotomise.stages.rectify import RectifyResult, RectifyReviewResult, rectify, rectify_review
@@ -290,3 +291,41 @@ def test_finalise_review_rejects_a_file_with_no_recorded_digest(
             archive_token="x",
             verified_digests={},
         )
+
+
+@pytest.mark.parametrize("corrupt", [False, True])
+def test_finalise_checks_recorded_fingerprints_in_a_pool(
+    tmp_path: Path,
+    make_dicom_file: Callable[..., Path],
+    monkeypatch: pytest.MonkeyPatch,
+    corrupt: bool,
+) -> None:
+    """The read-back of a sanitised tree runs in a pool and still fails closed."""
+    sanitised_dir = tmp_path / "sanitise"
+    files = [make_dicom_file(sanitised_dir / f"{n}.dcm", InstanceNumber=n) for n in range(1, 5)]
+    datasets = {path: pydicom.dcmread(path) for path in files}
+    pixels = {path: _pixel_fingerprint(dataset) for path, dataset in datasets.items()}
+    identities = {
+        path: (str(dataset.PatientID), str(dataset.SOPInstanceUID))
+        for path, dataset in datasets.items()
+    }
+    if corrupt:
+        pixels[files[2]] = ("not the real pixels",)
+    subject = make_subject(tmp_path)
+    pools = force_pool(monkeypatch)
+    arguments = {
+        "subject_label": "sub-01",
+        "sanitise_result": SanitiseResult(subject, "sub-01", sanitised_dir, files),
+        "source_digests": {},
+        "expected_pixels": pixels,
+        "expected_identities": identities,
+    }
+    rectified = RectifyResult(subject, tmp_path / "rectify", [])
+
+    if corrupt:
+        with pytest.raises(FinaliseVerificationError, match="Pixel data differs"):
+            finalise(rectified, start_run(tmp_path / "out"), **arguments)
+    else:
+        finalise(rectified, start_run(tmp_path / "out"), **arguments)
+
+    assert pools
