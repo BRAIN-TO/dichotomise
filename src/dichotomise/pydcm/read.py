@@ -233,7 +233,12 @@ def _read_all(paths: list[Path]) -> list[DicomMetadata | None]:
 
 
 def _parallel_map(
-    function: Callable[[Any], Any], items: list[Any], *, chunksize: int = 1
+    function: Callable[[Any], Any],
+    items: list[Any],
+    *,
+    chunksize: int = 1,
+    initializer: Callable[..., None] | None = None,
+    initargs: tuple[Any, ...] = (),
 ) -> list[Any]:
     """Apply `function` to every item, in order, using a pool of processes when there are many.
 
@@ -242,14 +247,20 @@ def _parallel_map(
     killed worker), the items are mapped one by one. That is safe to repeat because `function`
     must only read, or rewrite identical output. An error `function` itself raises is not retried:
     it is the first in input order, exactly as serially. `function` must be a module-level
-    function (workers pickle it).
+    function (workers pickle it). `initializer(*initargs)` runs once per worker (and once here
+    for the one-by-one path), so shared read-only context is sent once, not with every item.
     """
     workers = _worker_count()
     if len(items) >= _PARALLEL_MIN_FILES and workers >= 2:
         try:
             # forkserver, not fork: the CLI runs this beside a ticker thread.
             context = multiprocessing.get_context("forkserver")
-            pool = ProcessPoolExecutor(max_workers=workers, mp_context=context)
+            pool = ProcessPoolExecutor(
+                max_workers=workers,
+                mp_context=context,
+                initializer=initializer,
+                initargs=initargs,
+            )
         except (OSError, NotImplementedError, ValueError):
             pool = None  # e.g. a sandbox without shared memory, or no forkserver on Windows
         if pool is not None:
@@ -258,6 +269,8 @@ def _parallel_map(
                     return list(pool.map(function, items, chunksize=chunksize))
             except BrokenProcessPool:
                 pass  # a worker died: do the work again here, where the real error will show
+    if initializer is not None:
+        initializer(*initargs)
     return [function(item) for item in items]
 
 

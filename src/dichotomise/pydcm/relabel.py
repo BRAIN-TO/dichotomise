@@ -7,7 +7,7 @@ import json
 import random
 import re
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Iterator, MutableMapping
+from collections.abc import Callable, Iterator, MutableMapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -20,7 +20,7 @@ from pydicom.uid import generate_uid
 
 from dichotomise.errors import PolicyNotFoundError, PolicyValidationError, RelabelError
 from dichotomise.pydcm.names import generate_name
-from dichotomise.pydcm.read import _pixel_fingerprint
+from dichotomise.pydcm.read import _parallel_map, _pixel_fingerprint
 
 _POLICIES_DIR = Path(__file__).parent / "policies"
 
@@ -461,26 +461,118 @@ def _regenerated_fields(policy: Policy) -> list[str]:
     return [field for field, found in policy.actions.items() if found["action"] == "regenerate"]
 
 
-def seed_regenerated_uids(
-    paths: Iterable[Path], policy: Policy, replacement_cache: MutableMapping[str, str]
-) -> None:
-    """Reissue, before any file is sanitised, every UID a partial policy regenerates.
+class _CacheMissError(RelabelError):
+    """A frozen cache was asked for a value it does not hold (its message never names the key)."""
 
-    A partial policy (some UIDs regenerated, but not SOPInstanceUID) only changes references
-    to UIDs it regenerates. Seeding the cache from every file's header first means a reference
-    is replaced even when the file it points at is sanitised later, or in the other of the
-    retained and review sets. Other policies need no seeding and this returns at once.
+
+class FrozenCache(dict[str, str]):
+    """A replacement cache that can be read but not added to, so a worker fails closed.
+
+    Reading a missing key is still allowed (a follow-only reference to a UID the policy keeps);
+    only a new value being generated raises, and then without saying which original it was for.
     """
-    regenerated = _regenerated_fields(policy)
-    if not regenerated or "SOPInstanceUID" in regenerated:
-        return
-    for path in paths:
-        dataset = pydicom.dcmread(path, stop_before_pixels=True)
-        index = _index_by_tag(dataset)
-        for field in regenerated:
-            tag = tag_for_keyword(field)
-            for holder in index.get(tag, ()) if tag else ():
-                _regenerate_field(holder, field, replacement_cache)
+
+    def __setitem__(self, key: str, value: str) -> None:
+        raise _CacheMissError("A replacement value was needed that was not prepared in advance")
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        return (
+            FrozenCache,
+            (dict(self),),
+        )  # plain dict: no __setitem__ on load
+
+
+# What each pool worker needs and shares across its files; set once per worker by `_set_context`.
+_context: tuple[Policy, str, str, FrozenCache | None, bool] | None = None
+
+
+def _set_context(
+    policy: Policy, subject_label: str, scan_date: str, cache: FrozenCache | None, verify: bool
+) -> None:
+    global _context
+    _context = (policy, subject_label, scan_date, cache, verify)
+
+
+def _fill_one(path: Path) -> dict[str, str]:
+    """Apply the policy to one file's header and return the replacements it needed."""
+    assert _context is not None
+    policy, subject_label, scan_date, _, _ = _context
+    cache: dict[str, str] = {}
+    # defer_size, not stop_before_pixels: elements after the pixel data are still read.
+    dataset = pydicom.dcmread(path, defer_size=1024)
+    apply_policy(
+        dataset, policy, subject_label=subject_label, scan_date=scan_date, replacement_cache=cache
+    )
+    return cache
+
+
+def fill_replacement_cache(
+    paths: list[Path],
+    policy: Policy,
+    *,
+    subject_label: str,
+    scan_date: str,
+    replacement_cache: dict[str, str],
+) -> FrozenCache:
+    """Decide every replacement value for `paths` before any file is written; return them frozen.
+
+    Each file's header is run through the policy (in a pool for a large subject). Workers may
+    disagree about a value, so they are merged in file order and the first wins; the reverse
+    `uid-new:` entries are then rebuilt from the winners. Every file is later sanitised against
+    this one table, so the output cannot depend on file order or on which worker saw a file first.
+    """
+    parts = _parallel_map(
+        _fill_one,
+        paths,
+        initializer=_set_context,
+        initargs=(policy, subject_label, scan_date, None, False),
+    )
+    for part in parts:
+        for key, value in part.items():
+            if not key.startswith(_NEW_UID_MARK):
+                replacement_cache.setdefault(key, value)
+    for key, value in list(replacement_cache.items()):
+        if key.startswith("uid:"):
+            replacement_cache[_NEW_UID_MARK + value] = key[len("uid:") :]
+    return FrozenCache(replacement_cache)
+
+
+def _sanitise_one(task: tuple[Path, Path]) -> tuple[str, tuple[object, ...], str]:
+    """Sanitise one file against the frozen cache (a module-level function so a pool can run it)."""
+    assert _context is not None
+    policy, subject_label, scan_date, cache, verify = _context
+    assert cache is not None
+    source, target = task
+    try:
+        return _sanitise_file(
+            source,
+            target,
+            policy,
+            subject_label=subject_label,
+            scan_date=scan_date,
+            replacement_cache=cache,
+            verify=verify,
+        )
+    except _CacheMissError:
+        raise RelabelError(f"Replacement values were not prepared for {source}") from None
+
+
+def sanitise_many(
+    tasks: list[tuple[Path, Path]],
+    policy: Policy,
+    *,
+    subject_label: str,
+    scan_date: str,
+    cache: FrozenCache,
+    verify: bool,
+) -> list[tuple[str, tuple[object, ...], str]]:
+    """Sanitise (source, target) pairs in order, in a pool for a large subject."""
+    return _parallel_map(
+        _sanitise_one,
+        tasks,
+        initializer=_set_context,
+        initargs=(policy, subject_label, scan_date, cache, verify),
+    )
 
 
 def apply_policy(
@@ -532,7 +624,7 @@ def apply_policy(
     # or references would point at files that no longer exist. Fields the policy names
     # itself keep their own action. A policy that reissues only some UIDs (say the study
     # and frame of reference) just has its references follow those: a reference to a UID
-    # it keeps stays as it is. `seed_regenerated_uids` has already put every UID such a
+    # it keeps stays as it is. `fill_replacement_cache` has already put every UID such a
     # policy regenerates in the cache, so the result does not depend on file order.
     regenerated = _regenerated_fields(policy)
     if regenerated:

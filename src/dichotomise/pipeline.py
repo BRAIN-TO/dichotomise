@@ -14,9 +14,9 @@ from dichotomise.errors import RelabelError
 from dichotomise.pydcm.names import generate_name
 from dichotomise.pydcm.relabel import (
     Policy,
+    fill_replacement_cache,
     load_policy,
     normalise_numeric_label,
-    seed_regenerated_uids,
     validate_label,
 )
 from dichotomise.run import Run, start_run
@@ -274,13 +274,15 @@ def _process_subject(
     expected_pixels: dict[Path, tuple[object, ...]] | None = {} if policy is not None else None
     expected_identities: dict[Path, tuple[str, str]] | None = {} if policy is not None else None
     if policy is not None:
-        replacement_cache: dict[str, str] = {}
-        # A partial policy needs every UID it regenerates known before the first file is written.
-        seed_regenerated_uids(
+        # Every replacement value is decided, from all retained and review files, before the
+        # first file is written, so files can then be sanitised in any order or in parallel.
+        replacement_cache = fill_replacement_cache(
             [item.path for item in sift_result.retained]
             + [item.metadata.path for item in sift_result.review],
             policy,
-            replacement_cache,
+            subject_label=subject_label,
+            scan_date=subject.scan_date,
+            replacement_cache={},
         )
         sanitise_result = _run_stage(
             f"{subject_prefix}: sanitising files",

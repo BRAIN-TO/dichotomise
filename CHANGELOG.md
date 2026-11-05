@@ -14,6 +14,7 @@ pass the checks; inputs that fail one now stop the run instead of being processe
 - Preserve policy-added code sequences. Share the image-verification, sanitisation and audit-folder summary code between stages.
 - Split the README into `docs/` guides.
 - A custom policy that regenerates some UIDs (such as the study or frame of reference) but not `SOPInstanceUID` now also updates references and private elements that held those UIDs, instead of leaving the original value beside its replacement.
+- Use several CPUs within a subject (subjects still run one after another): the finished output is re-read, and a sanitising run's files are written, in a pool of processes for large subjects. Every replacement value is decided from all files before any is written, so output no longer depends on file order. On 489 real files (3.8 GB) a `minimal` run took about 84 s instead of 123 s.
 - Rename `LICENSE` to `LICENCE` (content unchanged).
 - Remove helpers the program never called (only importable from Python): `copy_tree`, `make_tarball_from_files`, `find_duplicate_files`, `iter_dicom_files` and `generate_default_label`.
 

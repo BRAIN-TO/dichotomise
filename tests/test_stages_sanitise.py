@@ -6,10 +6,13 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pydicom
-from helpers import make_subject
+import pytest
+from helpers import force_pool, make_subject
 
+from dichotomise.errors import RelabelError
+from dichotomise.pydcm import relabel
 from dichotomise.pydcm.read import read_metadata
-from dichotomise.pydcm.relabel import Policy, load_policy
+from dichotomise.pydcm.relabel import FrozenCache, Policy, fill_replacement_cache, load_policy
 from dichotomise.stages.rectify import RectifyResult, RectifyReviewResult
 from dichotomise.stages.sanitise import sanitise, sanitise_review
 
@@ -235,3 +238,113 @@ def test_sanitise_renames_files_so_the_filename_matches_the_regenerated_sop_uid(
     assert output.name == f"021_0001_{new_uid}_e01.dcm"
     assert original_uid not in output.name
     assert [p.name for p in output.parent.iterdir()] == [output.name]
+
+
+def test_fill_merges_workers_in_file_order_and_rebuilds_the_reverse_uid_entries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Workers disagree about a UID and a name: the first wins and the loser leaves no trace."""
+    first = {"uid:1.1": "9.1", "uid-new:9.1": "1.1", "PatientName:A": "First^Name"}
+    second = {
+        "uid:1.1": "9.2",
+        "uid-new:9.2": "1.1",
+        "PatientName:A": "Second^Name",
+        "uid:2.2": "9.3",
+    }
+    monkeypatch.setattr(relabel, "_parallel_map", lambda *_a, **_k: [first, second])
+
+    cache = fill_replacement_cache(
+        [], load_policy("standard"), subject_label="s", scan_date="", replacement_cache={}
+    )
+
+    assert cache["uid:1.1"] == "9.1"
+    assert cache["PatientName:A"] == "First^Name"
+    assert cache["uid-new:9.1"] == "1.1"
+    assert "uid-new:9.2" not in cache
+    assert cache["uid-new:9.3"] == "2.2"
+
+
+def test_sanitise_with_a_frozen_cache_refuses_a_value_it_was_not_given(
+    tmp_path: Path, make_dicom_file: Callable[..., Path]
+) -> None:
+    rectified_dir = tmp_path / "rectify"
+    source = make_dicom_file(rectified_dir / "021-DWI" / "1.dcm", StudyInstanceUID="1.2.9")
+    result = RectifyResult(make_subject(tmp_path), rectified_dir, [read_metadata(source)])
+
+    with pytest.raises(RelabelError) as error:
+        sanitise(
+            result,
+            policy=load_policy("standard"),
+            subject_label="sub-1",
+            replacement_cache=FrozenCache(),
+        )
+
+    assert "1.dcm" in str(error.value)
+    assert "1.2.9" not in str(error.value)
+
+
+def test_a_frozen_cache_lets_a_follow_only_reference_to_a_kept_uid_pass(
+    tmp_path: Path, make_dicom_file: Callable[..., Path]
+) -> None:
+    rectified_dir = tmp_path / "rectify"
+    source = make_dicom_file(rectified_dir / "021-DWI" / "1.dcm", FrameOfReferenceUID="1.2.7")
+    dataset = pydicom.dcmread(source)
+    dataset.add_new(0x00091010, "UI", "1.2.8")  # a UID the policy does not regenerate
+    dataset.save_as(source)
+    policy = Policy(name="p", actions={"FrameOfReferenceUID": {"action": "regenerate"}})
+    cache = fill_replacement_cache(
+        [source], policy, subject_label="s", scan_date="", replacement_cache={}
+    )
+
+    result = sanitise(
+        RectifyResult(make_subject(tmp_path), rectified_dir, [read_metadata(source)]),
+        policy=policy,
+        subject_label="sub-1",
+        replacement_cache=cache,
+    )
+
+    written = pydicom.dcmread(result.files[0])
+    assert written.FrameOfReferenceUID == cache["uid:1.2.7"] != "1.2.7"
+    assert written[0x00091010].value == "1.2.8"
+
+
+def test_a_pool_sanitises_like_one_process(
+    tmp_path: Path, make_dicom_file: Callable[..., Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Files sharing study and frame UIDs get the same replacements however they are split up."""
+    rectified_dir = tmp_path / "rectify"
+    sources = [
+        make_dicom_file(
+            rectified_dir / "021-DWI" / f"{n}.dcm",
+            PatientID="12345",
+            StudyInstanceUID="1.2.1",
+            FrameOfReferenceUID="1.2.7",
+            SOPInstanceUID=f"1.2.3.{n}",
+            InstanceNumber=n,
+        )
+        for n in range(1, 5)
+    ]
+    rectify_result = RectifyResult(
+        make_subject(tmp_path), rectified_dir, [read_metadata(path) for path in sources]
+    )
+    started = force_pool(monkeypatch)
+    cache = fill_replacement_cache(
+        sources,
+        load_policy("standard"),
+        subject_label="sub-1",
+        scan_date="",
+        replacement_cache={},
+    )
+    result = sanitise(
+        rectify_result,
+        policy=load_policy("standard"),
+        subject_label="sub-1",
+        replacement_cache=cache,
+    )
+
+    written = [pydicom.dcmread(path) for path in result.files]
+    assert len(started) == 2  # the fill and the sanitise both ran in a pool
+    assert {d.StudyInstanceUID for d in written} == {cache["uid:1.2.1"]}
+    assert {d.FrameOfReferenceUID for d in written} == {cache["uid:1.2.7"]}
+    assert len({d.SOPInstanceUID for d in written}) == 4
+    assert all(d.PatientID == "sub-1" for d in written)

@@ -9,7 +9,14 @@ import pydicom
 
 from dichotomise.pydcm.naming import with_new_sop_instance_uid
 from dichotomise.pydcm.read import DicomMetadata
-from dichotomise.pydcm.relabel import Policy, _apply_action, _sanitise_file, format_subject_name
+from dichotomise.pydcm.relabel import (
+    FrozenCache,
+    Policy,
+    _apply_action,
+    _sanitise_file,
+    format_subject_name,
+    sanitise_many,
+)
 from dichotomise.stages.capture import CapturedSubject
 from dichotomise.stages.rectify import (
     RectifyPlan,
@@ -189,7 +196,8 @@ def _sanitise_files(
     Reads from `sources` when the rectify stage only planned the names (no intermediate copy),
     and records pixel fingerprints and identities in the optional `expected_*` dicts for finalise.
     """
-    files: list[Path] = []
+    # Names are decided here, in order, before any file is written.
+    targets: list[Path] = []
     for metadata in metadata_files:
         target = _policy_path(
             target_dir / metadata.path.relative_to(source_dir),
@@ -199,18 +207,41 @@ def _sanitise_files(
             scan_date,
             replacement_cache,
         )
-        if target.exists():
+        if target.exists() or target in targets:
             raise FileExistsError(f"Sanitised output already exists: {target}")
         target.parent.mkdir(parents=True, exist_ok=True)
-        new_uid, fingerprint, patient_id = _sanitise_file(
-            sources.get(metadata.path, metadata.path),
-            target,
+        targets.append(target)
+    tasks = [
+        (sources.get(metadata.path, metadata.path), target)
+        for metadata, target in zip(metadata_files, targets, strict=True)
+    ]
+    verify = expected_pixels is None
+    if isinstance(replacement_cache, FrozenCache):
+        results = sanitise_many(
+            tasks,
             policy,
             subject_label=subject_label,
             scan_date=scan_date,
-            replacement_cache=replacement_cache,
-            verify=expected_pixels is None,
+            cache=replacement_cache,
+            verify=verify,
         )
+    else:  # a direct call with a live cache: values are generated as the files go by
+        results = [
+            _sanitise_file(
+                source,
+                target,
+                policy,
+                subject_label=subject_label,
+                scan_date=scan_date,
+                replacement_cache=replacement_cache,
+                verify=verify,
+            )
+            for source, target in tasks
+        ]
+    files: list[Path] = []
+    for metadata, target, (new_uid, fingerprint, patient_id) in zip(
+        metadata_files, targets, results, strict=True
+    ):
         target = _renamed_for_uid(target, metadata.sop_instance_uid, new_uid)
         files.append(target)
         if expected_pixels is not None:

@@ -144,6 +144,10 @@ time, and series UID/number/description/protocol within a DICOM folder.
 
 Compression is always `.tar.gz`; `pigz` is used when it is on `PATH`.
 
+Reading headers, sanitising files and re-checking the finished output use several CPUs automatically
+once a subject has 200 or more files (no flag; the container's CPU limit is respected). Subjects are
+still processed one after another, and the output is the same as a single-process run.
+
 Source files are checked for changes while their headers are captured and
 throughout processing. These checks detect ordinary file changes; they do not
 provide a filesystem snapshot.
