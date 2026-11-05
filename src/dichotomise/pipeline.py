@@ -24,8 +24,8 @@ from dichotomise.stages.audit import AuditResult, _audit_files
 from dichotomise.stages.capture import CapturedSubject, Fingerprint, _capture, _check_sources
 from dichotomise.stages.finalise import finalise, finalise_review
 from dichotomise.stages.rectify import (
-    _plan_rectify,
-    _plan_rectify_review,
+    plan_rectify,
+    plan_rectify_review,
     rectify,
     rectify_review,
 )
@@ -253,7 +253,7 @@ def _process_subject(
     rectify_result = _run_stage(
         f"{subject_prefix}: rectifying retained files",
         lambda: (
-            _plan_rectify(sift_result, source_digests, describe_series=describe_series)
+            plan_rectify(sift_result, source_digests, describe_series=describe_series)
             if direct
             else rectify(sift_result, source_digests, describe_series=describe_series)
         ),
@@ -262,7 +262,7 @@ def _process_subject(
     rectify_review_result = _run_stage(
         f"{subject_prefix}: renaming review files",
         lambda: (
-            _plan_rectify_review(sift_result, source_digests, describe_series=describe_series)
+            plan_rectify_review(sift_result, source_digests, describe_series=describe_series)
             if direct
             else rectify_review(sift_result, source_digests, describe_series=describe_series)
         ),

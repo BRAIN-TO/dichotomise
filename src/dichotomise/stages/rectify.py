@@ -34,7 +34,7 @@ class RectifyResult:
 
 
 @dataclass(frozen=True)
-class _RectifyPlan:
+class RectifyPlan:
     """The decided names for a subject's retained files; nothing is copied yet."""
 
     subject: CapturedSubject
@@ -45,9 +45,9 @@ class _RectifyPlan:
     target_by_source: dict[Path, Path]
 
 
-def _plan_rectify(
+def plan_rectify(
     sift_result: SiftResult, digests: dict[Path, str], *, describe_series: bool = True
-) -> _RectifyPlan:
+) -> RectifyPlan:
     """Decide each retained file's target name; merge identical repeats, refuse real clashes."""
     rectified_dir = sift_result.subject.working_dir / "rectify"
     sources: dict[Path, Path] = {}
@@ -68,7 +68,7 @@ def _plan_rectify(
         sources[target] = metadata.path
         target_by_source[metadata.path] = target
         files.append(replace(metadata, path=target))
-    return _RectifyPlan(
+    return RectifyPlan(
         sift_result.subject, rectified_dir, files, sources, merged_identical_count, target_by_source
     )
 
@@ -102,7 +102,7 @@ def rectify(
     archiving the source, and every copy is added), so finalise can check the copies against
     them; finalise reads them back from `target_by_source`.
     """
-    plan = _plan_rectify(sift_result, digests, describe_series=describe_series)
+    plan = plan_rectify(sift_result, digests, describe_series=describe_series)
     _copy_planned(plan.sources, digests)
     return RectifyResult(
         plan.subject,
@@ -125,7 +125,7 @@ class RectifyReviewResult:
 
 
 @dataclass(frozen=True)
-class _RectifyReviewPlan:
+class RectifyReviewPlan:
     """The decided names for a subject's review files; nothing is copied yet."""
 
     review_rectified_dir: Path
@@ -136,9 +136,9 @@ class _RectifyReviewPlan:
     target_by_source: dict[Path, Path]
 
 
-def _plan_rectify_review(
+def plan_rectify_review(
     sift_result: SiftResult, digests: dict[Path, str], *, describe_series: bool = True
-) -> _RectifyReviewPlan:
+) -> RectifyReviewPlan:
     """Decide every review file's target name, numbering clashes and merging identical repeats."""
     review_rectified_dir = sift_result.subject.working_dir / "review-rectify"
     written: dict[Path, dict[str, Path]] = {}  # name -> {content digest: final target}
@@ -165,7 +165,7 @@ def _plan_rectify_review(
         sources[target] = item.metadata.path
         target_by_source[item.metadata.path] = target
         files.append(replace(item.metadata, path=target))
-    return _RectifyReviewPlan(
+    return RectifyReviewPlan(
         review_rectified_dir,
         files,
         collision_count,
@@ -190,7 +190,7 @@ def rectify_review(
     being silently dropped or overwritten. `digests` is the same source-digest cache that
     `rectify()` takes.
     """
-    plan = _plan_rectify_review(sift_result, digests, describe_series=describe_series)
+    plan = plan_rectify_review(sift_result, digests, describe_series=describe_series)
     _copy_planned(plan.sources, digests)
     return RectifyReviewResult(
         plan.review_rectified_dir,

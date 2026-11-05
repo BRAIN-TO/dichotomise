@@ -14,10 +14,10 @@ from dichotomise.pydcm.read import _metadata_from_dataset, _pixel_fingerprint
 from dichotomise.run import Run
 from dichotomise.stages.capture import CapturedSubject
 from dichotomise.stages.rectify import (
+    RectifyPlan,
     RectifyResult,
+    RectifyReviewPlan,
     RectifyReviewResult,
-    _RectifyPlan,
-    _RectifyReviewPlan,
 )
 from dichotomise.stages.sanitise import SanitiseResult, SanitiseReviewResult
 from dichotomise.utils.archive import Archive, ProgressCallback, make_tarball
@@ -132,7 +132,7 @@ def _verify_pixel_data(source: Path, output: Path) -> None:
 
 
 def finalise(
-    rectify_result: RectifyResult | _RectifyPlan,
+    rectify_result: RectifyResult | RectifyPlan,
     run: Run,
     *,
     subject_label: str,
@@ -173,7 +173,7 @@ def finalise(
         for item, output in zip(rectify_result.files, sanitise_result.files, strict=True):
             source = (
                 rectify_result.sources[item.path]
-                if isinstance(rectify_result, _RectifyPlan)
+                if isinstance(rectify_result, RectifyPlan)
                 else item.path
             )
             _verify_pixel_data(source, output)
@@ -201,7 +201,7 @@ def finalise(
 
 
 def _verify_sanitised_review(
-    rectify_review_result: RectifyReviewResult | _RectifyReviewPlan,
+    rectify_review_result: RectifyReviewResult | RectifyReviewPlan,
     sanitise_review_result: SanitiseReviewResult,
     expected_pixels: dict[Path, tuple[object, ...]] | None,
     expected_identities: dict[Path, tuple[str, str]] | None,
@@ -210,7 +210,7 @@ def _verify_sanitised_review(
     for item, output in zip(rectify_review_result.files, sanitise_review_result.files, strict=True):
         source = (
             rectify_review_result.sources[item.path]
-            if isinstance(rectify_review_result, _RectifyReviewPlan)
+            if isinstance(rectify_review_result, RectifyReviewPlan)
             else item.path
         )
         if expected_pixels is None:
@@ -224,7 +224,7 @@ def _verify_sanitised_review(
 
 
 def finalise_review(
-    rectify_review_result: RectifyReviewResult | _RectifyReviewPlan,
+    rectify_review_result: RectifyReviewResult | RectifyReviewPlan,
     run: Run,
     *,
     subject_label: str,

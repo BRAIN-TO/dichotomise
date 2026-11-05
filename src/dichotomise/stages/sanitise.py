@@ -12,10 +12,10 @@ from dichotomise.pydcm.read import DicomMetadata
 from dichotomise.pydcm.relabel import Policy, _apply_action, _sanitise_file, format_subject_name
 from dichotomise.stages.capture import CapturedSubject
 from dichotomise.stages.rectify import (
+    RectifyPlan,
     RectifyResult,
+    RectifyReviewPlan,
     RectifyReviewResult,
-    _RectifyPlan,
-    _RectifyReviewPlan,
 )
 from dichotomise.utils.text import safe_filename_text
 
@@ -82,7 +82,7 @@ def _renamed_for_uid(target: Path, old_uid: str, new_uid: str) -> Path:
 
 
 def sanitise(
-    rectify_result: RectifyResult | _RectifyPlan,
+    rectify_result: RectifyResult | RectifyPlan,
     *,
     policy: Policy,
     subject_label: str,
@@ -108,7 +108,7 @@ def sanitise(
         rectify_result.files,
         rectify_result.rectified_dir,
         sanitised_dir,
-        rectify_result.sources if isinstance(rectify_result, _RectifyPlan) else {},
+        rectify_result.sources if isinstance(rectify_result, RectifyPlan) else {},
         policy,
         subject_label,
         rectify_result.subject.scan_date,
@@ -134,7 +134,7 @@ class SanitiseReviewResult:
 
 
 def sanitise_review(
-    rectify_review_result: RectifyReviewResult | _RectifyReviewPlan,
+    rectify_review_result: RectifyReviewResult | RectifyReviewPlan,
     *,
     policy: Policy,
     subject_label: str,
@@ -160,7 +160,7 @@ def sanitise_review(
         rectify_review_result.review_rectified_dir,
         sanitised_review_dir,
         rectify_review_result.sources
-        if isinstance(rectify_review_result, _RectifyReviewPlan)
+        if isinstance(rectify_review_result, RectifyReviewPlan)
         else {},
         policy,
         subject_label,
