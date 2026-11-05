@@ -39,6 +39,7 @@ def test_read_metadata_extracts_expected_fields(
     dicom_path = make_dicom_file(
         tmp_path / "1.dcm",
         PatientID="sub-01",
+        PatientName="Doe^Jane^19900101",
         SeriesNumber=3,
         SeriesDescription="DWI",
         ProtocolName="DWI_64dir",
@@ -50,6 +51,7 @@ def test_read_metadata_extracts_expected_fields(
 
     assert metadata.path == dicom_path
     assert metadata.patient_id == "sub-01"
+    assert metadata.patient_name == "Doe^Jane^19900101"
     assert metadata.series_number == 3
     assert metadata.series_description == "DWI"
     assert metadata.protocol_name == "DWI_64dir"

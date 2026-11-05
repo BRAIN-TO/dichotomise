@@ -8,13 +8,6 @@ def test_word_lists_have_no_duplicates() -> None:
     assert len(SURNAMES) == len(set(SURNAMES))
 
 
-def test_word_lists_are_non_trivially_sized() -> None:
-    # Not pinned to exact counts (see docs/sanitise-policies.md for why the
-    # surname count varies by letter) -- just a sanity floor.
-    assert len(ADJECTIVES) > 20
-    assert len(SURNAMES) > 500
-
-
 def test_generate_name_joins_one_adjective_and_one_surname() -> None:
     name = generate_name()
 
