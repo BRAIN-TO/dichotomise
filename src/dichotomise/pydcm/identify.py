@@ -44,11 +44,6 @@ def find_duplicate_pairs(
     return pairs
 
 
-def find_duplicate_files(paths: Sequence[Path]) -> set[Path]:
-    """Given files known to sit in the same folder, return the byte-for-byte copies."""
-    return set(find_duplicate_pairs(paths))
-
-
 def find_sop_conflicts(
     files: Sequence[DicomMetadata], cache: MutableMapping[Path, str] | None = None
 ) -> set[Path]:

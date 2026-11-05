@@ -11,7 +11,6 @@ from dichotomise.pydcm import read as read_module
 from dichotomise.pydcm.read import (
     _optional_number,
     _pixel_fingerprint,
-    iter_dicom_files,
     iter_dicom_metadata,
     read_metadata,
 )
@@ -68,14 +67,14 @@ def test_read_metadata_rejects_non_dicom_file(tmp_path: Path) -> None:
         read_metadata(not_dicom)
 
 
-def test_iter_dicom_files_finds_only_dicom_files_recursively(
+def test_iter_dicom_metadata_finds_only_dicom_files_recursively(
     tmp_path: Path, make_dicom_file: Callable[..., Path]
 ) -> None:
     dicom_a = make_dicom_file(tmp_path / "series-a" / "1.dcm")
     dicom_b = make_dicom_file(tmp_path / "series-b" / "nested" / "2.dcm")
     (tmp_path / "series-a" / "readme.txt").write_text("not a dicom file")
 
-    found = set(iter_dicom_files(tmp_path))
+    found = {metadata.path for metadata in iter_dicom_metadata(tmp_path)}
 
     assert found == {dicom_a, dicom_b}
 

@@ -254,8 +254,3 @@ def iter_dicom_metadata(root: Path) -> Iterator[DicomMetadata]:
     for metadata in _read_all(paths):
         if metadata is not None:
             yield metadata
-
-
-def iter_dicom_files(root: Path) -> Iterator[Path]:
-    """Recursively yield every readable DICOM path under `root`."""
-    yield from (metadata.path for metadata in iter_dicom_metadata(root))

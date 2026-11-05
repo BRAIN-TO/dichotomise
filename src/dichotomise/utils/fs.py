@@ -1,13 +1,12 @@
-"""copy_tree() and related filesystem helpers."""
+"""Filesystem helpers: file digests and the symlink check."""
 
 from __future__ import annotations
 
 import hashlib
-import shutil
 from collections.abc import MutableMapping
 from pathlib import Path
 
-from dichotomise.errors import DestinationExistsError, UnsafeSourceError
+from dichotomise.errors import UnsafeSourceError
 
 
 def file_digest(path: Path, cache: MutableMapping[Path, str] | None = None) -> str:
@@ -22,17 +21,6 @@ def file_digest(path: Path, cache: MutableMapping[Path, str] | None = None) -> s
     if cache is not None:
         cache[path] = digest
     return digest
-
-
-def copy_tree(source: Path, destination: Path) -> None:
-    """Copy everything under `source` into a new folder at `destination`.
-
-    Refuses to run if `destination` already exists, rather than silently
-    overwriting or mixing in with whatever is already there.
-    """
-    if destination.exists():
-        raise DestinationExistsError(f"{destination} already exists; refusing to overwrite it")
-    shutil.copytree(source, destination)
 
 
 def reject_symlinks(source_dir: Path) -> None:

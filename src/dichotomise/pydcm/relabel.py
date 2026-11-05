@@ -9,7 +9,6 @@ import re
 from collections import defaultdict
 from collections.abc import Callable, Iterator, MutableMapping
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -27,19 +26,6 @@ _POLICIES_DIR = Path(__file__).parent / "policies"
 
 _LABEL_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
 _MAX_LABEL_LENGTH = 64
-
-
-def generate_default_label(patient_name: str) -> str:
-    """Build the legacy ``YYYYMMDD_LF`` label from a DICOM patient name."""
-    match = re.fullmatch(r"([^\^]+)\^([^\^]+)\^(\d{8})", patient_name)
-    if match is None:
-        raise RelabelError("A default replacement label needs LAST^FIRST^YYYYMMDD PatientName")
-    surname, given_name, birth_date = match.groups()
-    try:
-        datetime.strptime(birth_date, "%Y%m%d")
-    except ValueError as error:
-        raise RelabelError(f"PatientName contains an invalid birth date: {birth_date!r}") from error
-    return f"{birth_date}_{surname[0].upper()}{given_name[0].upper()}"
 
 
 def normalise_numeric_label(value: str) -> str:

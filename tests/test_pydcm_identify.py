@@ -9,12 +9,11 @@ import pytest
 
 from dichotomise.pydcm.identify import (
     file_digest,
-    find_duplicate_files,
     find_duplicate_pairs,
     find_misfiled_files,
     find_sop_conflicts,
 )
-from dichotomise.pydcm.read import DicomMetadata, iter_dicom_files, read_metadata
+from dichotomise.pydcm.read import DicomMetadata, iter_dicom_metadata, read_metadata
 
 DATA_DIR = (
     Path(__file__).parent
@@ -67,7 +66,7 @@ def test_file_digest_differs_when_only_the_sop_instance_uid_differs(
     assert file_digest(first) != file_digest(second)
 
 
-def test_find_duplicate_files_flags_only_byte_identical_later_copies(
+def test_find_duplicate_pairs_flags_only_byte_identical_later_copies(
     tmp_path: Path, make_dicom_file: Callable[..., Path]
 ) -> None:
     original = make_dicom_file(tmp_path / "1.dcm")
@@ -76,7 +75,7 @@ def test_find_duplicate_files_flags_only_byte_identical_later_copies(
     resaved_with_new_uid = make_dicom_file(tmp_path / "3.dcm")
     different = make_dicom_file(tmp_path / "4.dcm", InstanceNumber=2)
 
-    duplicates = find_duplicate_files([original, repeat, resaved_with_new_uid, different])
+    duplicates = set(find_duplicate_pairs([original, repeat, resaved_with_new_uid, different]))
 
     assert duplicates == {repeat}
 
@@ -133,15 +132,14 @@ def test_find_misfiled_files_flags_nothing_when_a_folder_agrees_with_itself() ->
 
 def test_real_example_export_has_no_duplicates_or_misfiled_files() -> None:
     files_by_folder: dict[str, list[DicomMetadata]] = defaultdict(list)
-    for path in iter_dicom_files(DATA_DIR):
-        metadata = read_metadata(path)
-        files_by_folder[str(path.parent)].append(metadata)
+    for metadata in iter_dicom_metadata(DATA_DIR):
+        files_by_folder[str(metadata.path.parent)].append(metadata)
 
     if not files_by_folder:
         pytest.skip("optional real scanner data is unavailable under tests/data")
 
     for folder, items in files_by_folder.items():
-        duplicates = find_duplicate_files([item.path for item in items])
+        duplicates = set(find_duplicate_pairs([item.path for item in items]))
         assert duplicates == set(), f"unexpected duplicate(s) in {folder}"
 
     assert find_misfiled_files(files_by_folder) == set()

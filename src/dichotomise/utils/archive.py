@@ -88,29 +88,6 @@ def make_tarball(
     )
 
 
-def make_tarball_from_files(
-    files: Sequence[Path],
-    root: Path,
-    archive_path: Path,
-    *,
-    on_progress: ProgressCallback | None = None,
-) -> Archive:
-    """Compress a scattered set of files, kept relative to `root`, into `archive_path`.
-
-    Unlike `make_tarball()`, `files` need not fill all of `root` or even sit
-    under one common folder beneath it; each is added individually, by its
-    path relative to `root`, with no separate directory entries (a plain
-    extract still recreates the needed folders). This lets one subject's
-    files be archived straight from a shared, multi-subject source
-    directory, without first copying that subject's files into a folder of
-    their own.
-    """
-    sorted_files = sorted(files)
-    return _write_tarball(
-        ((path, path.relative_to(root)) for path in sorted_files), archive_path, on_progress
-    )
-
-
 def _add_entries(
     tar: tarfile.TarFile,
     entries: Sequence[tuple[Path, Path]],

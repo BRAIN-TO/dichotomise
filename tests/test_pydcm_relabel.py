@@ -11,7 +11,6 @@ from dichotomise.errors import PolicyNotFoundError, RelabelError
 from dichotomise.pydcm.relabel import (
     Policy,
     apply_policy,
-    generate_default_label,
     load_policy,
     normalise_numeric_label,
     sanitise_file,
@@ -71,21 +70,6 @@ def test_sanitise_file_preserves_compressed_pixel_data(
         replacement_cache={},
     )
     assert pydicom.dcmread(target).PixelData == dataset.PixelData
-
-
-def test_generate_default_label_uses_date_and_initials_from_the_patient_name() -> None:
-    # Initials are last-name-first, then first-name, matching LAST^FIRST order.
-    assert generate_default_label("Doe^Jane^19900101") == "19900101_DJ"
-
-
-def test_generate_default_label_rejects_a_name_without_the_expected_shape() -> None:
-    with pytest.raises(RelabelError):
-        generate_default_label("Doe^Jane")
-
-
-def test_generate_default_label_rejects_an_invalid_embedded_date() -> None:
-    with pytest.raises(RelabelError):
-        generate_default_label("Doe^Jane^19901301")  # month 13
 
 
 @pytest.mark.parametrize(
