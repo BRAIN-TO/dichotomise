@@ -479,7 +479,7 @@ def seed_regenerated_uids(
         index = _index_by_tag(dataset)
         for field in regenerated:
             tag = tag_for_keyword(field)
-            for holder in [dataset, *(index.get(tag, ()) if tag else ())]:
+            for holder in index.get(tag, ()) if tag else ():
                 _regenerate_field(holder, field, replacement_cache)
 
 
