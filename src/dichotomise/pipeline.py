@@ -10,7 +10,7 @@ from secrets import token_hex
 from time import monotonic
 from typing import TypeVar
 
-from dichotomise.errors import RelabelError, UnsafeSourceError
+from dichotomise.errors import RelabelError
 from dichotomise.pydcm.names import generate_name
 from dichotomise.pydcm.relabel import (
     Policy,
@@ -20,7 +20,7 @@ from dichotomise.pydcm.relabel import (
 )
 from dichotomise.run import Run, start_run
 from dichotomise.stages.audit import AuditResult, _audit_files
-from dichotomise.stages.capture import CapturedSubject, Fingerprint, _capture, _fingerprint
+from dichotomise.stages.capture import CapturedSubject, Fingerprint, _capture, _check_sources
 from dichotomise.stages.finalise import _finalise, _finalise_review
 from dichotomise.stages.rectify import (
     _plan_rectify,
@@ -173,17 +173,6 @@ def _source_map_path(source_archive_path: Path) -> Path:
     """Name the source map after the source archive it sits beside."""
     stem = source_archive_path.name.removesuffix(".tar.gz")
     return source_archive_path.with_name(stem.replace("_source-archive_", "_source-map_") + ".csv")
-
-
-def _check_sources(fingerprints: dict[Path, Fingerprint]) -> None:
-    """Stop the run if any source file changed since it was archived."""
-    for path, expected in fingerprints.items():
-        try:
-            actual = _fingerprint(path)
-        except OSError as error:
-            raise UnsafeSourceError(f"Source is no longer accessible: {path}") from error
-        if actual != expected:
-            raise UnsafeSourceError(f"Source changed during processing: {path}")
 
 
 def _process_subject(

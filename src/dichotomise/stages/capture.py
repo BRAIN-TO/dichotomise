@@ -105,6 +105,17 @@ def _fingerprints(paths: list[Path]) -> dict[Path, Fingerprint]:
         raise UnsafeSourceError(f"Source is no longer accessible: {error.filename}") from error
 
 
+def _check_sources(fingerprints: dict[Path, Fingerprint]) -> None:
+    """Stop the run if any source file changed since it was archived."""
+    for path, expected in fingerprints.items():
+        try:
+            actual = _fingerprint(path)
+        except OSError as error:
+            raise UnsafeSourceError(f"Source is no longer accessible: {path}") from error
+        if actual != expected:
+            raise UnsafeSourceError(f"Source changed during processing: {path}")
+
+
 def _capture(source_dir: Path, run: Run) -> tuple[list[CapturedSubject], dict[Path, Fingerprint]]:
     """capture(), plus a fingerprint of every DICOM source file for later change checks.
 
