@@ -67,7 +67,7 @@ uv run dichotomise --help
 **TL;DR:** Use the published Docker or Apptainer image, optionally through the wrapper script.
 
 Every tagged release also publishes a Docker image and an Apptainer/Singularity
-image to GHCR, which is useful for HPC clusters and containerized pipelines where
+image to GHCR, which is useful for HPC clusters and containerised pipelines where
 installing Python packages directly isn't an option.
 
 ```bash
@@ -86,7 +86,7 @@ runs.
 [`scripts/dichotomise-container`](../scripts/dichotomise-container) wraps this so
 you don't have to think about image references or mounts: it takes the exact
 same options as native `dichotomise` (its `--help` output is byte-identical,
-since it delegates straight into the containerized CLI), auto-detects
+since it delegates straight into the containerised CLI), auto-detects
 `docker` or `apptainer`, and rewrites `--source-dir`/`--out-dir`/
 `--mapping-file` into the right bind mounts for you.
 

@@ -43,7 +43,7 @@ own script, put the call under `if __name__ == "__main__":`.
 
 Each release is archived on Zenodo with a DOI
 ([![DOI](https://zenodo.org/badge/1397808016.svg)](https://doi.org/10.5281/zenodo.23166271)).
-Citation metadata (including the author and license) is in
+Citation metadata (including the author and licence) is in
 [`CITATION.cff`](../CITATION.cff). GitHub renders a "Cite this repository"
 button from it on the repo's main page, or cite it directly:
 
