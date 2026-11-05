@@ -228,26 +228,31 @@ def _worker_count() -> int:
 
 
 def _read_all(paths: list[Path]) -> list[DicomMetadata | None]:
-    """Read every path, with a pool of processes for a large export and serially otherwise."""
-    if len(paths) >= _PARALLEL_MIN_FILES:
-        results = _read_in_parallel(paths)
-        if results is not None:
-            return results
-    return [_read_or_none(path) for path in paths]
+    """Read every path's metadata, in a pool of processes for a large export."""
+    return _parallel_map(_read_or_none, paths, chunksize=_CHUNK_SIZE)
 
 
-def _read_in_parallel(paths: list[Path]) -> list[DicomMetadata | None] | None:
-    """Read `paths` with a pool of processes, or return None if one cannot be used here."""
+def _parallel_map(
+    function: Callable[[Any], Any], items: list[Any], *, chunksize: int = 1
+) -> list[Any]:
+    """Apply `function` to every item, in order, using a pool of processes when there are many.
+
+    Below `_PARALLEL_MIN_FILES` items (read at call time, so a test can lower it), or when no pool
+    can be started here (a sandbox without shared memory, no `forkserver` on Windows, a broken
+    pool), the items are mapped one by one. That is safe to repeat because `function` must only
+    read, or rewrite identical output. The first failure raised is the first in input order,
+    exactly as serially. `function` must be a module-level function (workers pickle it).
+    """
     workers = _worker_count()
-    if workers < 2:
-        return None
-    try:
-        # forkserver, not fork: the CLI runs this beside a ticker thread.
-        context = multiprocessing.get_context("forkserver")
-        with ProcessPoolExecutor(max_workers=workers, mp_context=context) as pool:
-            return list(pool.map(_read_or_none, paths, chunksize=_CHUNK_SIZE))
-    except (OSError, NotImplementedError, BrokenProcessPool):
-        return None  # e.g. a sandbox without shared memory: read the files one by one
+    if len(items) >= _PARALLEL_MIN_FILES and workers >= 2:
+        try:
+            # forkserver, not fork: the CLI runs this beside a ticker thread.
+            context = multiprocessing.get_context("forkserver")
+            with ProcessPoolExecutor(max_workers=workers, mp_context=context) as pool:
+                return list(pool.map(function, items, chunksize=chunksize))
+        except (OSError, NotImplementedError, ValueError, BrokenProcessPool):
+            pass
+    return [function(item) for item in items]
 
 
 def iter_dicom_metadata(root: Path) -> Iterator[DicomMetadata]:

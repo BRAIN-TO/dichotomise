@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pydicom
 import pytest
+from helpers import force_pool
 
 from dichotomise.errors import NotDicomError
 from dichotomise.pydcm import read as read_module
@@ -147,11 +148,32 @@ def test_iter_dicom_metadata_gives_the_same_list_when_read_in_parallel(
     (folder / "notes.txt").write_text("not a DICOM file")
     serial = list(iter_dicom_metadata(folder))
 
-    monkeypatch.setattr(read_module, "_PARALLEL_MIN_FILES", 1)
+    pools = force_pool(monkeypatch)
     parallel = list(iter_dicom_metadata(folder))
 
+    assert pools  # a pool really ran, not the serial fallback
     assert len(serial) == 6
     assert parallel == serial
+
+
+def _double(number: int) -> int:
+    return number * 2
+
+
+def test_parallel_map_keeps_input_order_and_falls_back_when_no_pool_can_start(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pools = force_pool(monkeypatch)
+    assert read_module._parallel_map(_double, list(range(50)), chunksize=3) == [
+        2 * n for n in range(50)
+    ]
+    assert pools
+
+    def no_context(_method: str) -> None:
+        raise ValueError("cannot find context for 'forkserver'")  # as on Windows
+
+    monkeypatch.setattr(read_module.multiprocessing, "get_context", no_context)
+    assert read_module._parallel_map(_double, [1, 2, 3]) == [2, 4, 6]
 
 
 @pytest.mark.parametrize(
