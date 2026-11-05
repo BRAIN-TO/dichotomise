@@ -52,7 +52,7 @@ def test_rectify_copies_retained_files_into_their_agreed_names(tmp_path: Path) -
         review=[],
     )
 
-    result = rectify(sift_result, {}, {})
+    result = rectify(sift_result, {})
 
     expected_a = result.rectified_dir / "021-diffusion" / "021_0001_sop-1_e01.dcm"
     expected_b = result.rectified_dir / "021-diffusion" / "021_0002_sop-1_e01.dcm"
@@ -81,7 +81,7 @@ def test_rectify_writes_a_byte_identical_repeat_in_another_folder_only_once(
         review=[],
     )
 
-    result = rectify(sift_result, {}, {})
+    result = rectify(sift_result, {})
 
     expected = result.rectified_dir / "021-diffusion" / "021_0001_sop-1_e01.dcm"
     assert [f.path for f in result.files] == [expected]
@@ -114,7 +114,7 @@ def test_rectify_raises_when_two_different_files_would_share_a_name(
     )
 
     with pytest.raises(DichotomiseError):
-        rectify(sift_result, {}, {})
+        rectify(sift_result, {})
 
 
 def test_rectify_review_renames_files_using_the_same_naming_scheme(tmp_path: Path) -> None:

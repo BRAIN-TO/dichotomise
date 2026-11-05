@@ -86,7 +86,6 @@ def _copy_planned(sources: dict[Path, Path], digests: dict[Path, str]) -> None:
 def rectify(
     sift_result: SiftResult,
     digests: dict[Path, str],
-    sources: dict[Path, Path],
     *,
     describe_series: bool = True,
 ) -> RectifyResult:
@@ -101,11 +100,10 @@ def rectify(
 
     `digests` holds source-file SHA-256 digests (the pipeline passes the ones taken while
     archiving the source, and every copy is added), so finalise can check the copies against
-    them. `sources` is filled with each rectified file's source path, for finalise to verify.
+    them; finalise reads them back from `target_by_source`.
     """
     plan = _plan_rectify(sift_result, digests, describe_series=describe_series)
     _copy_planned(plan.sources, digests)
-    sources.update(plan.sources)
     return RectifyResult(
         plan.subject,
         plan.rectified_dir,

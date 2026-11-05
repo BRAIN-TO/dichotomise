@@ -140,7 +140,6 @@ def finalise(
     archive_token: str | None = None,
     on_progress: ProgressCallback | None = None,
     source_digests: dict[Path, str],
-    retained_sources: dict[Path, Path],
     expected_pixels: dict[Path, tuple[object, ...]] | None = None,
     expected_identities: dict[Path, tuple[str, str]] | None = None,
 ) -> FinaliseResult:
@@ -151,7 +150,7 @@ def finalise(
     sanitised), scan date/time and a per-run study number, so one study never replaces another.
 
     The checks depend on the run: copies are compared with the source digests and
-    `retained_sources` (rectified file to source file); sanitised files with the pixel
+    the source of each rectified file (`target_by_source`); sanitised files with the pixel
     fingerprints and identities recorded while sanitising.
     """
     source_dir = sanitise_result.sanitised_dir if sanitise_result else rectify_result.rectified_dir
@@ -161,8 +160,9 @@ def finalise(
     _verify_output_tree(expected_files, source_dir, expected_pixels, expected_identities)
 
     if sanitise_result is None:
+        source_of = {target: source for source, target in rectify_result.target_by_source.items()}
         for item in rectify_result.files:
-            original = retained_sources.get(item.path)
+            original = source_of.get(item.path)
             if original is None:
                 raise FinaliseVerificationError(f"No source provenance for {item.path}")
             if original not in source_digests:

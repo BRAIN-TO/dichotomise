@@ -250,15 +250,12 @@ def _process_subject(
 
     _check_sources(source_fingerprints)
     direct = sanitise_requested and not keep_working_files
-    retained_sources: dict[Path, Path] = {}  # rectified file -> its source, for finalise to verify
     rectify_result = _run_stage(
         f"{subject_prefix}: rectifying retained files",
         lambda: (
             _plan_rectify(sift_result, source_digests, describe_series=describe_series)
             if direct
-            else rectify(
-                sift_result, source_digests, retained_sources, describe_series=describe_series
-            )
+            else rectify(sift_result, source_digests, describe_series=describe_series)
         ),
         on_stage,
     )
@@ -349,7 +346,6 @@ def _process_subject(
             archive_token=output_token,
             on_progress=_bind_progress(finalise_description),
             source_digests=source_digests,
-            retained_sources=retained_sources,
             expected_pixels=expected_pixels,
             expected_identities=expected_identities,
         ),

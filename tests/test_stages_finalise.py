@@ -33,8 +33,7 @@ def test_finalise_archives_the_rectified_tree_when_not_sanitising(
     metadata = read_metadata(file_a)
     subject = replace(make_subject(tmp_path / "capture"), files=[metadata])
     digests: dict[Path, str] = {}
-    sources: dict[Path, Path] = {}
-    rectify_result = rectify(SiftResult(subject, [metadata], []), digests, sources)
+    rectify_result = rectify(SiftResult(subject, [metadata], []), digests)
     run = start_run(tmp_path / "out", now=datetime(2026, 9, 22, 14, 30, 12, tzinfo=UTC))
 
     result = finalise(
@@ -43,7 +42,6 @@ def test_finalise_archives_the_rectified_tree_when_not_sanitising(
         subject_label="sub-01",
         archive_token="a1b2c3",
         source_digests=digests,
-        retained_sources=sources,
     )
 
     expected_name = "sub-01_a1b2c3_dichotomised-archive_20260922T143012Z"
@@ -70,9 +68,7 @@ def test_finalise_raises_when_the_output_tree_is_missing_an_expected_file(
     run = start_run(tmp_path / "out", now=datetime(2026, 9, 22, 14, 30, 12, tzinfo=UTC))
 
     with pytest.raises(FinaliseVerificationError):
-        finalise(
-            rectify_result, run, subject_label="sub-01", source_digests={}, retained_sources={}
-        )
+        finalise(rectify_result, run, subject_label="sub-01", source_digests={})
 
 
 def test_finalise_rejects_changed_sanitised_pixel_data(
@@ -94,7 +90,6 @@ def test_finalise_rejects_changed_sanitised_pixel_data(
             subject_label="sub-01",
             sanitise_result=sanitised,
             source_digests={},
-            retained_sources={},
         )
 
 
@@ -112,7 +107,6 @@ def test_finalise_rejects_unexpected_file_even_when_count_matches(
             start_run(tmp_path / "out"),
             subject_label="sub-01",
             source_digests={},
-            retained_sources={},
         )
 
 
@@ -269,8 +263,7 @@ def test_finalise_rejects_a_copy_that_differs_from_its_source(
     metadata = read_metadata(source)
     subject = replace(make_subject(tmp_path / "capture"), files=[metadata])
     digests: dict[Path, str] = {}
-    sources: dict[Path, Path] = {}
-    rectified = rectify(SiftResult(subject, [metadata], []), digests, sources)
+    rectified = rectify(SiftResult(subject, [metadata], []), digests)
     with rectified.files[0].path.open("ab") as handle:
         handle.write(b"changed")
     with pytest.raises(FinaliseVerificationError, match="Copied file differs"):
@@ -279,7 +272,6 @@ def test_finalise_rejects_a_copy_that_differs_from_its_source(
             start_run(tmp_path / "out"),
             subject_label="sub-01",
             source_digests=digests,
-            retained_sources=sources,
         )
 
 
