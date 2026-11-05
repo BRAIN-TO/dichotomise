@@ -281,3 +281,20 @@ def test_finalise_rejects_a_copy_that_differs_from_its_source(
             source_digests=digests,
             retained_sources=sources,
         )
+
+
+def test_finalise_review_rejects_a_file_with_no_recorded_digest(
+    tmp_path: Path, make_dicom_file: Callable[..., Path]
+) -> None:
+    review_dir = tmp_path / "review"
+    review = RectifyReviewResult(
+        review_dir, [read_metadata(make_dicom_file(review_dir / "1.dcm"))], 0
+    )
+    with pytest.raises(FinaliseVerificationError, match="No source digest"):
+        finalise_review(
+            review,
+            start_run(tmp_path / "out"),
+            subject_label="sub-01",
+            archive_token="x",
+            verified_digests={},
+        )
