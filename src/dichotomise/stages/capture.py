@@ -114,11 +114,19 @@ def _capture(source_dir: Path, run: Run) -> tuple[list[CapturedSubject], dict[Pa
     reject_symlinks(source_dir)
     paths = sorted(path for path in source_dir.rglob("*") if path.is_file())
     before = _fingerprints(paths)
-    metadata = list(dicom_read.iter_dicom_metadata(source_dir))
+    metadata = [item for item in dicom_read._read_all(paths) if item is not None]
     after = _fingerprints(paths)
     for path in paths:
         if before[path] != after[path]:
             raise UnsafeSourceError(f"Source changed during capture: {path}")
+    # A file that is not DICOM is skipped, but one that cannot be opened at all is not.
+    dicom_paths = {item.path for item in metadata}
+    for path in paths:
+        if path not in dicom_paths:
+            try:
+                path.open("rb").close()
+            except OSError as error:
+                raise UnsafeSourceError(f"Source is no longer accessible: {path}") from error
     files_by_subject = group_by_subject(metadata)
 
     if not files_by_subject:

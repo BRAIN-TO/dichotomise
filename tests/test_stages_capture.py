@@ -92,3 +92,24 @@ def test_capture_refuses_a_source_directory_containing_a_symlink(
 
     with pytest.raises(UnsafeSourceError):
         capture(source, run)
+
+
+def test_capture_stops_on_a_source_file_it_cannot_open(
+    tmp_path: Path, make_dicom_file: Callable[..., Path]
+) -> None:
+    """An unreadable file is a source problem, not a stray non-DICOM file to skip."""
+    source = tmp_path / "export"
+    make_dicom_file(source / "1.dcm")
+    locked = source / "2.dcm"
+    locked.write_bytes(b"x")
+    locked.chmod(0)
+    try:
+        if locked.open("rb"):  # running as root ignores the mode, so nothing to test
+            pytest.skip("file permissions are not enforced for this user")
+    except PermissionError:
+        pass
+    try:
+        with pytest.raises(UnsafeSourceError, match="no longer accessible"):
+            capture(source, _run(tmp_path))
+    finally:
+        locked.chmod(0o600)
