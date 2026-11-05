@@ -97,6 +97,10 @@ def sanitise(
     file regenerates to the same new value everywhere. Pass an external
     `replacement_cache` to also share it with `sanitise_review()`, so a UID
     common to a retained and a review file still gets the same replacement.
+
+    `expected_pixels` and `expected_identities` are for the pipeline: when given, each file's
+    pixel fingerprint and identity are recorded there and `finalise()` does the read-back
+    check. Left as None (a direct call), every file is re-read and checked as it is saved.
     """
     sanitised_dir = rectify_result.subject.working_dir / "sanitise"
     replacement_cache = {} if replacement_cache is None else replacement_cache
@@ -145,7 +149,8 @@ def sanitise_review(
     that a regenerated SOP Instance UID replaces the original one in the
     filename; otherwise only DICOM tag content is scrubbed. Shares `replacement_cache` with the
     retained-files sanitise() call so a UID appearing in both a retained and
-    a review file regenerates to the same new value.
+    a review file regenerates to the same new value. `expected_pixels` and
+    `expected_identities` work as in `sanitise()`.
     """
     if not rectify_review_result.files:
         return None
@@ -179,6 +184,11 @@ def _sanitise_files(
     expected_pixels: dict[Path, tuple[object, ...]] | None,
     expected_identities: dict[Path, tuple[str, str]] | None,
 ) -> list[Path]:
+    """Sanitise a list of rectified files into `target_dir` and return the output paths.
+
+    Reads from `sources` when the rectify stage only planned the names (no intermediate copy),
+    and records pixel fingerprints and identities in the optional `expected_*` dicts for finalise.
+    """
     files: list[Path] = []
     for metadata in metadata_files:
         target = _policy_path(

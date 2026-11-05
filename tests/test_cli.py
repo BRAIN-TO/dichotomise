@@ -1,3 +1,5 @@
+"""Command-line behaviour: options, messages and the files a full run writes."""
+
 from __future__ import annotations
 
 import shutil

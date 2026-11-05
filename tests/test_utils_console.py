@@ -1,3 +1,5 @@
+"""Console helpers."""
+
 from __future__ import annotations
 
 from dichotomise.utils import console as console_module

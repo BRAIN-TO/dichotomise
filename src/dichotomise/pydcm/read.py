@@ -48,6 +48,11 @@ class DicomMetadata:
 
 
 def _pixel_fingerprint(dataset: pydicom.Dataset) -> tuple[object, ...]:
+    """Summarise a file's pixel data and the fields that say how to read it.
+
+    Two datasets with equal fingerprints decode to the same image. Used to prove that
+    sanitising and copying left the pixels, and their interpretation, untouched.
+    """
     payloads = []
     for field in ("PixelData", "FloatPixelData", "DoubleFloatPixelData"):
         value = dataset.get(field)
@@ -146,6 +151,7 @@ def read_metadata(path: Path) -> DicomMetadata:
 
 
 def _metadata_from_dataset(dataset: pydicom.Dataset, path: Path) -> DicomMetadata:
+    """Build `DicomMetadata` from an open dataset; echo and ASL values may be per-frame."""
     echo_number = dataset.get("EchoNumbers")
     echo_time = dataset.get("EchoTime")
     frame_echo_numbers, frame_echo_times, frame_asl_contexts = _per_frame_values(dataset)
@@ -193,6 +199,7 @@ _CHUNK_SIZE = 16
 
 
 def _read_or_none(path: Path) -> DicomMetadata | None:
+    """Read one file's metadata, returning None when it is not DICOM (so a pool can skip it)."""
     try:
         return read_metadata(path)
     except NotDicomError:
@@ -208,6 +215,7 @@ def _cpu_limit_from_cgroup(text: str) -> int | None:
 
 
 def _worker_count() -> int:
+    """How many header-reading processes to start: usable CPUs, capped by any container quota."""
     try:
         available = len(os.sched_getaffinity(0))
     except AttributeError:  # not available on every platform

@@ -1,3 +1,5 @@
+"""Filename-safe text."""
+
 from __future__ import annotations
 
 import pytest

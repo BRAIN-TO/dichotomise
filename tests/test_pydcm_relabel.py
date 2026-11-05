@@ -1,3 +1,5 @@
+"""The sanitisation policy engine: loading policies, applying actions and remapping UIDs."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -101,6 +103,7 @@ def test_validate_label_rejects_unsafe_or_overlong_labels(label: str) -> None:
 
 
 def _dataset(**fields: object) -> Dataset:
+    """A dataset with the given fields set, for feeding the policy engine."""
     dataset = Dataset()
     for key, value in fields.items():
         setattr(dataset, key, value)

@@ -1,3 +1,5 @@
+"""The pipeline on a real scanner export; skipped when `tests/data` is absent."""
+
 from __future__ import annotations
 
 import shutil

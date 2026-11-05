@@ -1,3 +1,5 @@
+"""The sift stage: the split into retained and review files."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -8,6 +10,7 @@ from dichotomise.stages.sift import sift
 
 
 def _metadata(path: Path, **overrides: object):
+    """A `DicomMetadata` with fixed defaults; keyword arguments override them."""
     from dichotomise.pydcm.read import DicomMetadata
 
     defaults: dict[str, object] = {

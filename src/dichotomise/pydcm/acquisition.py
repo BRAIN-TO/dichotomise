@@ -68,6 +68,7 @@ class AcquisitionSummary:
 
     @property
     def is_multi_echo_or_ti(self) -> bool:
+        """True when the series holds more than one echo time or inversion-time level."""
         return len(self.echo_times) > 1 or self.ti_levels > 1
 
     def describe(self) -> str:

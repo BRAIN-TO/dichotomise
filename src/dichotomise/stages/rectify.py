@@ -102,6 +102,10 @@ def rectify(
     them). Two different scan files that would land on the exact same
     rectified name is a real ambiguity about which file the name belongs to,
     so it stops the run rather than silently picking one or numbering around it.
+
+    `digests` caches source-file SHA-256 digests (the pipeline passes the ones taken while
+    archiving the source, so the copies are checked against them). `sources` is filled with
+    each rectified file's source path, for finalise to verify later.
     """
     digests = {} if digests is None else digests  # a fresh cache per call, never shared
     plan = _plan_rectify(sift_result, digests, describe_series=describe_series)
@@ -202,7 +206,8 @@ def rectify_review(
     written is the same file again, so it is not written a second time
     (`merged_identical_count` counts them). A name shared by files that
     differ keeps a disambiguated name (`-dup01`, `-dup02`, ...) instead of
-    being silently dropped or overwritten.
+    being silently dropped or overwritten. `digests` is the same source-digest cache that
+    `rectify()` takes.
     """
     digests = {} if digests is None else digests  # a fresh cache per call, never shared
     plan = _plan_rectify_review(sift_result, digests, describe_series=describe_series)

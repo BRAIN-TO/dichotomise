@@ -1,3 +1,5 @@
+"""The timestamped run folder and its standard subfolders."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime

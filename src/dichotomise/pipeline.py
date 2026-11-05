@@ -129,6 +129,7 @@ def _prepare_labels(
     subject_mappings: Mapping[str, str] | None,
     used_labels: set[str],
 ) -> list[str]:
+    """Return one label per subject: the real PatientID, or the replacement when sanitising."""
     if not sanitise_requested:
         return [subject.subject_id for subject in subjects]
     return [
@@ -197,6 +198,12 @@ def _process_subject(
     # inputs, not on anything audit/sift/rectify produce, so it can be
     # resolved upfront and every report written straight to its final
     # location, rather than staged under a temporary name and renamed later.
+    """Run every stage for one captured study, writing its reports as it goes.
+
+    Stage order matters: the source is re-checked for changes before each stage that reads it,
+    and the source map is written as soon as the audit has sorted the files, so a later
+    failure still leaves it behind.
+    """
     subject_label = resolved_label
     output_token = _random_output_token(used_output_tokens)
     reports_dir = _reports_dir_for(run, subject_label, output_token)
@@ -209,6 +216,7 @@ def _process_subject(
     write_source_manifest(subject, reports_dir, names=names)
 
     def _bind_progress(description: str) -> Callable[[int, int], None] | None:
+        """Tie the archive-progress callback to one stage's description, or None if unused."""
         if on_archive_progress is None:
             return None
         return lambda done, total: on_archive_progress(description, done, total)

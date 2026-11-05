@@ -1,3 +1,5 @@
+"""Rectified file and folder names."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -7,6 +9,7 @@ from dichotomise.pydcm.read import DicomMetadata
 
 
 def _metadata(**overrides: object) -> DicomMetadata:
+    """A `DicomMetadata` with fixed defaults; keyword arguments override them."""
     defaults: dict[str, object] = {
         "path": Path("/source/1.dcm"),
         "patient_id": "sub-01",

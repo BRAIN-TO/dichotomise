@@ -1,3 +1,5 @@
+"""The finalise stage: output verification, archives and the standalone provenance checks."""
+
 from __future__ import annotations
 
 import json
@@ -21,6 +23,7 @@ from dichotomise.utils.fs import file_digest
 
 
 def _review_manifest(result: RectifyReviewResult) -> None:
+    """Write the private digest manifest that standalone review finalisation requires."""
     manifest = result.review_rectified_dir.parent / ".review-rectify-digests.json"
     manifest.write_text(
         json.dumps(

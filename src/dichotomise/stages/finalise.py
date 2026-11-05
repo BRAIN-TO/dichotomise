@@ -110,6 +110,7 @@ def _verify_output_tree(
 
 
 def _verify_identity(dataset: pydicom.Dataset, path: Path, expected: tuple[str, str]) -> None:
+    """Check a sanitised file's PatientID and SOP UID (dataset and file meta) are as written."""
     _, sop_uid = expected
     if (str(dataset.get("PatientID", "")), str(dataset.get("SOPInstanceUID", ""))) != expected:
         raise FinaliseVerificationError(
@@ -125,6 +126,7 @@ def _verify_identity(dataset: pydicom.Dataset, path: Path, expected: tuple[str, 
 
 
 def _verify_pixel_data(source: Path, output: Path) -> None:
+    """Check that an output file's pixels and their interpretation match its source file."""
     original_dataset = pydicom.dcmread(source)
     finished = pydicom.dcmread(output)
     if _pixel_fingerprint(original_dataset) != _pixel_fingerprint(finished):
@@ -196,6 +198,11 @@ def _finalise(
     expected_pixels: dict[Path, tuple[object, ...]] | None = None,
     expected_identities: dict[Path, tuple[str, str]] | None = None,
 ) -> FinaliseResult:
+    """Verify the output tree file by file, then archive it with a checksum.
+
+    The checks depend on the run: copies are compared with the source digests; sanitised
+    files with the pixel fingerprints and identities recorded while sanitising.
+    """
     source_dir = sanitise_result.sanitised_dir if sanitise_result else rectify_result.rectified_dir
     expected_files = (
         sanitise_result.files if sanitise_result else [item.path for item in rectify_result.files]
@@ -306,6 +313,7 @@ def _verify_sanitised_review(
     expected_pixels: dict[Path, tuple[object, ...]] | None,
     expected_identities: dict[Path, tuple[str, str]] | None,
 ) -> None:
+    """Check each sanitised review file against its source or the recorded fingerprints."""
     for item, output in zip(rectify_review_result.files, sanitise_review_result.files, strict=True):
         source = (
             rectify_review_result.sources[item.path]
@@ -334,6 +342,7 @@ def _finalise_review(
     expected_identities: dict[Path, tuple[str, str]] | None = None,
     verified_digests: dict[Path, str] | None = None,
 ) -> Archive | None:
+    """Verify the review tree and archive it, or return None when there are no review files."""
     if not rectify_review_result.files:
         return None
     source_dir = (

@@ -232,6 +232,7 @@ class FolderNote:
 
 
 def _stem_number(path: Path) -> int | None:
+    """The file name as a number (`12.dcm` gives 12), or None if the name is not a plain number."""
     return int(path.stem) if path.stem.isdecimal() else None
 
 
@@ -258,10 +259,12 @@ def _file_span(paths: Sequence[Path]) -> str:
 
 
 def _plural(count: int, singular: str, plural: str) -> str:
+    """Choose the singular or plural word for a count."""
     return singular if count == 1 else plural
 
 
 def _misfiled_notes(files: Sequence[AuditedFile]) -> list[str]:
+    """Plain-language notes on files that belong to a different series than their folder."""
     misfiled = [file for file in files if file.is_misfiled]
     if not misfiled:
         return []
@@ -334,6 +337,7 @@ def _duplicate_runs(duplicates: dict[Path, Path]) -> tuple[list[str], int | None
 
 
 def _duplicate_notes(files: Sequence[AuditedFile], *, compact: bool) -> list[str]:
+    """Plain-language notes on byte-identical copies, in a compact form for PR/SR folders."""
     duplicates = {
         f.metadata.path: f.duplicate_of for f in files if f.is_duplicate and f.duplicate_of
     }
@@ -382,6 +386,7 @@ def _duplicate_notes(files: Sequence[AuditedFile], *, compact: bool) -> list[str
 
 
 def _conflict_notes(files: Sequence[AuditedFile]) -> list[str]:
+    """Notes on files that share a SOP Instance UID but differ in content."""
     groups: dict[str, list[Path]] = {}
     for file in files:
         if file.is_sop_conflict:
@@ -397,6 +402,7 @@ def _conflict_notes(files: Sequence[AuditedFile]) -> list[str]:
 
 
 def _inconsistency_notes(files: Sequence[AuditedFile]) -> list[str]:
+    """Notes on header fields that differ in a folder, beyond those a misfiled file explains."""
     full = metadata_inconsistencies(files)
     if not full:
         return []
@@ -439,6 +445,8 @@ def describe_findings(
 
 @dataclass(frozen=True)
 class _FolderSummary:
+    """The audit findings for one physical folder, shared by the CLI table and the reports."""
+
     folder: Path
     files: list[AuditedFile]
     inconsistencies: list[str]
@@ -450,6 +458,7 @@ class _FolderSummary:
 
 
 def _folder_summaries(audit_result: AuditResult) -> list[_FolderSummary]:
+    """Summarise each folder's findings, in natural folder order (`2` before `10`)."""
     files_by_folder: dict[Path, list[AuditedFile]] = defaultdict(list)
     for file in audit_result.files:
         files_by_folder[file.folder].append(file)

@@ -1,3 +1,5 @@
+"""The source-archive stage: naming and contents of the untouched-source archive."""
+
 from __future__ import annotations
 
 import re

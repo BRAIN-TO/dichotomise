@@ -1,3 +1,5 @@
+"""The placeholder-name generator and its word lists."""
+
 from __future__ import annotations
 
 from dichotomise.pydcm.names import ADJECTIVES, SURNAMES, generate_name

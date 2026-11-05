@@ -1,3 +1,5 @@
+"""End-to-end runs of `run_pipeline`: archives, reports, sanitising and the fail-closed checks."""
+
 from __future__ import annotations
 
 import csv

@@ -39,6 +39,7 @@ class CapturedSubject:
 
 
 def _subject_folder_name(metadata: DicomMetadata, used_names: dict[str, int]) -> str:
+    """A unique working-folder name from PatientID and study date, numbered when it repeats."""
     base_name = (
         f"{safe_filename_text(metadata.patient_id)}_{safe_filename_text(metadata.study_date)}"
     )

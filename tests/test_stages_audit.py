@@ -1,3 +1,5 @@
+"""The audit stage: duplicates, SOP conflicts, misfiled files and plain-language notes."""
+
 from __future__ import annotations
 
 import shutil
@@ -10,6 +12,7 @@ from dichotomise.stages.capture import CapturedSubject
 
 
 def _subject(directory: Path) -> CapturedSubject:
+    """A subject whose files are every DICOM found under `directory`."""
     return CapturedSubject(
         subject_id="sub-01",
         patient_name="Doe^Jane^19900101",
@@ -230,10 +233,12 @@ def _write_series(
 
 
 def _uid_named(number: int, instance: int, sop: str) -> str:
+    """File name in the scanner style: `MRe.<SOP UID>`, no extension."""
     return f"MRe.{sop}"
 
 
 def _plain_named(number: int, instance: int, sop: str) -> str:
+    """File name made of the series and instance numbers, with a `.dcm` extension."""
     return f"{number}-{instance}.dcm"
 
 
@@ -293,6 +298,7 @@ def test_audit_still_flags_a_stray_file_in_a_one_series_folder(
 
 
 def _extension_named(number: int, instance: int, sop: str) -> str:
+    """File name made of the SOP UID plus a `.dcm` extension."""
     return f"{sop}.dcm"
 
 

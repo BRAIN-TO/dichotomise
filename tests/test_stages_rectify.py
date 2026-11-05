@@ -1,3 +1,5 @@
+"""The rectify stage: target names, collisions and byte-identical repeats."""
+
 from __future__ import annotations
 
 from collections.abc import Callable

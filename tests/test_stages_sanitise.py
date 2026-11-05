@@ -1,3 +1,5 @@
+"""The sanitise stage: policy applied to a rectified tree, with consistent UIDs."""
+
 from __future__ import annotations
 
 from collections.abc import Callable

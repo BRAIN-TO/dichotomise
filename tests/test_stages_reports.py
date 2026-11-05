@@ -1,3 +1,5 @@
+"""The JSON and CSV reports each stage writes."""
+
 from __future__ import annotations
 
 import csv
@@ -23,6 +25,7 @@ from dichotomise.utils.archive import Archive
 
 
 def _subject(source_root: Path, files: list[DicomMetadata] | None = None) -> CapturedSubject:
+    """A subject rooted at `source_root`, optionally listing `files`."""
     return CapturedSubject(
         subject_id="sub-01",
         patient_name="Doe^Jane^19900101",
@@ -36,6 +39,7 @@ def _subject(source_root: Path, files: list[DicomMetadata] | None = None) -> Cap
 
 
 def _metadata(path: Path) -> DicomMetadata:
+    """A `DicomMetadata` with fixed values for the file at `path`."""
     return DicomMetadata(
         path=path,
         patient_id="sub-01",

@@ -1,3 +1,5 @@
+"""The capture stage: grouping files by subject without copying them."""
+
 from __future__ import annotations
 
 import os
@@ -13,6 +15,7 @@ from dichotomise.stages.capture import capture
 
 
 def _run(tmp_path: Path):
+    """A run in `tmp_path/out` with a fixed timestamp, so names are predictable."""
     out_dir = tmp_path / "out"
     return start_run(out_dir, now=datetime(2026, 9, 22, 14, 30, 12, tzinfo=UTC))
 

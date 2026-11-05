@@ -118,6 +118,7 @@ def load_policy(name: str) -> Policy:
 
 
 def _load_policy(name: str, *, ancestors: frozenset[str]) -> Policy:
+    """Load and validate one policy file, resolving `extends` and refusing circular inheritance."""
     if name in ancestors:
         chain = " -> ".join((*sorted(ancestors), name))
         raise PolicyValidationError(f"Policy inheritance is circular: {chain}.")
@@ -147,6 +148,7 @@ def _load_policy(name: str, *, ancestors: frozenset[str]) -> Policy:
 
 
 def _remove_field(dataset: Dataset, field: str) -> None:
+    """Delete a field if the dataset has it."""
     if hasattr(dataset, field):
         delattr(dataset, field)
 
@@ -186,6 +188,7 @@ def _index_by_tag(dataset: Dataset) -> dict[int, list[Dataset]]:
 
 
 def _is_sequence_tag(tag: int | None) -> bool:
+    """True when the DICOM dictionary says this tag is a sequence (VR `SQ`)."""
     if tag is None:
         return False
     try:
@@ -197,6 +200,7 @@ def _is_sequence_tag(tag: int | None) -> bool:
 def _replace_field(
     dataset: Dataset, field: str, instruction: dict[str, Any], placeholders: dict[str, str]
 ) -> None:
+    """Set a field to the policy's value, substituting placeholders such as `<subject-label>`."""
     if "value" not in instruction:
         return  # nothing to set yet; see docs/sanitise-policies.md
     value = instruction["value"]
@@ -284,6 +288,7 @@ def _new_uid_for(original: str, replacement_cache: MutableMapping[str, str]) -> 
 def _regenerate_field(
     dataset: Dataset, field: str, replacement_cache: MutableMapping[str, str]
 ) -> None:
+    """Replace a UID with its stable new value, so repeats and references stay in step."""
     original = str(getattr(dataset, field, "")).strip()
     if original:
         setattr(dataset, field, _new_uid_for(original, replacement_cache))
@@ -347,6 +352,7 @@ def _scramble_date(original: str, field: str) -> str:
 def _scramble_date_field(
     dataset: Dataset, field: str, replacement_cache: MutableMapping[str, str]
 ) -> None:
+    """Replace a date with a scrambled one, the same scrambled date for the same original."""
     new_value = _cached_value(
         dataset, field, replacement_cache, lambda original: _scramble_date(original, field)
     )
@@ -384,6 +390,7 @@ def _generate_person_name() -> str:
 def _random_name_field(
     dataset: Dataset, field: str, replacement_cache: MutableMapping[str, str]
 ) -> None:
+    """Replace a name with a generated one, the same name for the same original."""
     new_value = _cached_value(
         dataset, field, replacement_cache, lambda _original: _generate_person_name()
     )
@@ -398,6 +405,7 @@ def _apply_action(
     placeholders: dict[str, str],
     replacement_cache: MutableMapping[str, str],
 ) -> None:
+    """Carry out one policy action (keep, remove, replace, regenerate, ...) on a field."""
     action = instruction["action"]
     if action == "keep":
         return
@@ -476,6 +484,9 @@ def apply_policy(
             )
         if action in ("add", "add_code_sequence") or _is_sequence_tag(tag):
             index = _index_by_tag(dataset)
+    # A policy that reissues SOPInstanceUID must also reissue every UID that refers to it,
+    # or references would point at files that no longer exist. Fields the policy names
+    # itself keep their own action.
     if policy.actions.get("SOPInstanceUID", {}).get("action") == "regenerate":
         explicit = {
             field for field, found in policy.actions.items() if found["action"] != "regenerate"
@@ -521,6 +532,11 @@ def _sanitise_file(
     replacement_cache: MutableMapping[str, str],
     verify: bool,
 ) -> tuple[str, tuple[object, ...], str]:
+    """Sanitise one file and save it, optionally re-reading the saved file to check it.
+
+    Returns the new SOP Instance UID, the pixel fingerprint taken before sanitising, and the
+    PatientID written. With `verify`, the saved file must match: pixels, PatientID and SOP UID.
+    """
     dataset = pydicom.dcmread(source_path)
     fingerprint = _pixel_fingerprint(dataset)
     apply_policy(

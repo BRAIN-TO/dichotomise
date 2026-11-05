@@ -19,11 +19,14 @@ ProgressCallback = Callable[[int, int], None]
 
 
 class _HashingReader:
+    """Wrap a file so everything read from it is also hashed, for a checksum made in one pass."""
+
     def __init__(self, source: BinaryIO) -> None:
         self.source = source
         self.hasher = hashlib.sha256()
 
     def read(self, size: int = -1) -> bytes:
+        """Read from the wrapped file and add the bytes to the running hash."""
         data = self.source.read(size)
         self.hasher.update(data)
         return data
@@ -51,6 +54,7 @@ class Archive:
 
 
 def _checksum_path_for(archive_path: Path) -> Path:
+    """The `.sha256` sidecar path that goes with an archive path."""
     name = archive_path.name
     if name.endswith(".tar.gz"):
         name = name[: -len(".tar.gz")]
@@ -156,7 +160,7 @@ def _write_tarball_with_pigz(
         try:
             with tarfile.open(fileobj=stdin, mode="w|") as tar:
                 _add_entries(tar, entries, total_bytes, on_progress, source_digests)
-        except BaseException:
+        except BaseException:  # includes Ctrl-C: never leave pigz running after an interrupt
             process.terminate()
             with suppress(OSError):
                 stdin.close()

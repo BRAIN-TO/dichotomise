@@ -1,3 +1,5 @@
+"""Finding byte-identical duplicates, SOP UID conflicts and misfiled files."""
+
 from __future__ import annotations
 
 import shutil
@@ -26,6 +28,7 @@ DATA_DIR = (
 
 
 def _metadata(path: Path, **overrides: object) -> DicomMetadata:
+    """A `DicomMetadata` with fixed defaults; keyword arguments override them."""
     defaults: dict[str, object] = {
         "path": path,
         "patient_id": "sub-01",

@@ -19,6 +19,7 @@ class Run:
 
     @property
     def working_dir(self) -> Path:
+        """Temporary files for the run; removed afterwards unless `--keep-working-files` is set."""
         return self.root / "working"
 
     @property
@@ -33,6 +34,7 @@ class Run:
 
     @property
     def reports_dir(self) -> Path:
+        """One folder of JSON and CSV reports per study."""
         return self.root / "reports"
 
     @property

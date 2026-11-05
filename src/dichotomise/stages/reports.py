@@ -38,6 +38,7 @@ from dichotomise.utils.text import natural_sort_key
 
 
 def _relative(path: Path, base: Path) -> str:
+    """A path as text, relative to the base folder."""
     return str(path.relative_to(base))
 
 
@@ -95,6 +96,7 @@ def pseudonymised_audit(
     shown_names: dict[tuple[Path, Path], Path] = {}
 
     def shown_group(audited_file: AuditedFile) -> Path | None:
+        """The anonymous series folder for a file's series group, or None for an ordinary folder."""
         group = audited_file.series_folder
         if group is None:
             return None
@@ -104,6 +106,7 @@ def pseudonymised_audit(
         )
 
     def shown(description: str) -> str:
+        """The series description to show: as is, or a stable `description-N` label when hidden."""
         if not hide_series_descriptions:
             return description
         return labels.setdefault(description, f"description-{len(labels) + 1}")
@@ -125,6 +128,7 @@ def pseudonymised_audit(
 
 
 def _write(reports_dir: Path, filename: str, data: dict[str, object]) -> Path:
+    """Write a JSON report (creating the folder) and return its path."""
     reports_dir.mkdir(parents=True, exist_ok=True)
     report_path = reports_dir / filename
     report_path.write_text(json.dumps(data, indent=2) + "\n")

@@ -1,3 +1,5 @@
+"""Reading DICOM headers into `DicomMetadata`, including Enhanced MR per-frame values."""
+
 from __future__ import annotations
 
 from collections.abc import Callable

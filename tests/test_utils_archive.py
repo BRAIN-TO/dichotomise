@@ -1,3 +1,5 @@
+"""Archive creation, checksums, verification and the pigz path."""
+
 from __future__ import annotations
 
 import hashlib
@@ -13,6 +15,7 @@ from dichotomise.utils.archive import make_tarball, verify_archive
 
 
 def _make_source(tmp_path: Path) -> Path:
+    """A small source folder holding one file, for the archive tests."""
     source = tmp_path / "source"
     (source / "series-a").mkdir(parents=True)
     (source / "series-a" / "1.dcm").write_bytes(b"scan content")

@@ -102,6 +102,7 @@ class DichotomiseCommand(RichCommand):
     """Render the command's usage notes in the same Rich style as its options."""
 
     def format_epilog(self, context: Any, formatter: Any) -> None:
+        """Print the single- and multi-subject example panels under the help text."""
         if self.epilog is None:
             return
         single_subject = Panel(
@@ -218,6 +219,7 @@ def _run_with_elapsed_ticker(run_started: float, work: Callable[[], _T]) -> _T:
     with Live(console=console, refresh_per_second=4, transient=True) as live:
 
         def update() -> None:
+            """Refresh the elapsed-time line every 0.2 seconds until the ticker is stopped."""
             while not stopped.is_set():
                 elapsed = _format_elapsed(monotonic() - run_started)
                 live.update(Text(f"Time elapsed: {elapsed}", style="dim"))
@@ -398,6 +400,7 @@ def _infer_label_mode(subject_id: str | None, new_id: str | None) -> str:
 
 
 def _add_mapping(mapping: dict[str, str], source_id: str, replacement_id: str) -> None:
+    """Record one patient-ID mapping, rejecting blanks and IDs given twice."""
     if not source_id or not replacement_id:
         raise click.UsageError("Each mapping must contain both a source ID and a replacement ID.")
     if source_id in mapping:
@@ -406,6 +409,7 @@ def _add_mapping(mapping: dict[str, str], source_id: str, replacement_id: str) -
 
 
 def _parse_inline_mappings(entries: tuple[str, ...]) -> dict[str, str]:
+    """Turn repeated `--mapping a:b,c:d` values into one dict of patient ID to replacement ID."""
     mapping: dict[str, str] = {}
     for entry in entries:
         for pair in entry.split(","):
@@ -419,6 +423,7 @@ def _parse_inline_mappings(entries: tuple[str, ...]) -> dict[str, str]:
 
 
 def _load_mapping_file(path: Path) -> dict[str, str]:
+    """Read a JSON mapping file (the `.json` suffix may be left off); `instructions` is ignored."""
     resolved_path = path if path.is_file() else path.with_suffix(".json")
     if not resolved_path.is_file():
         raise click.UsageError(f"No JSON mapping file found at {path} or {resolved_path}.")
