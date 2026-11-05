@@ -98,7 +98,7 @@ def test_run_pipeline_does_not_cross_contaminate_subjects_sharing_one_source_fol
     tmp_path: Path, make_dicom_file: Callable[..., Path]
 ) -> None:
     # Two subjects' files interleaved in the exact same literal folder: since
-    # capture() no longer copies each subject into a folder of their own,
+    # capture no longer copies each subject into a folder of their own,
     # audit's per-folder majority vote must still only ever see one
     # subject's own files, never the other subject's sharing that folder.
     source = tmp_path / "export"

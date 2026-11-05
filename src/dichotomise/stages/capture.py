@@ -10,7 +10,6 @@ from pathlib import Path
 from dichotomise.errors import NoDicomFilesFoundError, UnsafeSourceError
 from dichotomise.pydcm import read as dicom_read
 from dichotomise.pydcm.read import DicomMetadata
-from dichotomise.run import Run
 from dichotomise.utils.fs import reject_symlinks
 from dichotomise.utils.text import safe_filename_text
 
@@ -78,17 +77,6 @@ def subject_from_files(
     )
 
 
-def capture(source_dir: Path, run: Run) -> list[CapturedSubject]:
-    """Group every scan file under `source_dir` by subject, without copying any of them.
-
-    Subjects are identified from each file's PatientID and StudyInstanceUID,
-    never from folder names, so a messy or misnamed export still ends up
-    split correctly. A file that cannot be read as DICOM is left out of
-    every subject's file list.
-    """
-    return _capture(source_dir, run)[0]
-
-
 Fingerprint = tuple[int, int, int, int, int]
 
 
@@ -117,8 +105,15 @@ def _check_sources(fingerprints: dict[Path, Fingerprint]) -> None:
             raise UnsafeSourceError(f"Source changed during processing: {path}")
 
 
-def _capture(source_dir: Path, run: Run) -> tuple[list[CapturedSubject], dict[Path, Fingerprint]]:
-    """capture(), plus a fingerprint of every DICOM source file for later change checks.
+def capture(
+    source_dir: Path, working_root: Path
+) -> tuple[list[CapturedSubject], dict[Path, Fingerprint]]:
+    """Group every scan file under `source_dir` by subject, without copying any of them.
+
+    Subjects come from each file's PatientID and StudyInstanceUID, never from folder names,
+    so a messy or misnamed export still splits correctly. Each subject's `working_dir` is a
+    folder under `working_root`. A file that cannot be read as DICOM is left out. Also returns
+    a fingerprint of every DICOM source file for later change checks.
 
     Every file is fingerprinted before its header is read and again afterwards,
     so one that changes or disappears mid-capture stops the run instead of
@@ -154,7 +149,7 @@ def _capture(source_dir: Path, run: Run) -> tuple[list[CapturedSubject], dict[Pa
             subject_from_files(
                 files,
                 source_root=source_dir,
-                working_dir=run.working_dir / folder_name,
+                working_dir=working_root / folder_name,
                 output_number=output_number,
             )
         )

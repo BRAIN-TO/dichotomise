@@ -21,7 +21,7 @@ from dichotomise.pydcm.relabel import (
 )
 from dichotomise.run import Run, start_run
 from dichotomise.stages.audit import AuditResult, _audit_files
-from dichotomise.stages.capture import CapturedSubject, Fingerprint, _capture, _check_sources
+from dichotomise.stages.capture import CapturedSubject, Fingerprint, _check_sources, capture
 from dichotomise.stages.finalise import finalise, finalise_review
 from dichotomise.stages.rectify import (
     plan_rectify,
@@ -434,7 +434,7 @@ def run_pipeline(
         on_run_start(run)
     try:
         subjects, captured_fingerprints = _run_stage(
-            "Capturing DICOMs by study", lambda: _capture(source_dir, run), on_stage
+            "Capturing DICOMs by study", lambda: capture(source_dir, run.working_dir), on_stage
         )
         if on_info is not None:
             total_files = sum(len(subject.files) for subject in subjects)

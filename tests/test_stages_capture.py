@@ -46,7 +46,7 @@ def test_capture_groups_files_by_patient_and_study_without_copying(
     )
     run = _run(tmp_path)
 
-    subjects = capture(source, run)
+    subjects = capture(source, run.working_dir)[0]
 
     assert {subject.subject_id for subject in subjects} == {"sub-01", "sub-02"}
     sub01 = next(subject for subject in subjects if subject.subject_id == "sub-01")
@@ -68,7 +68,7 @@ def test_capture_ignores_non_dicom_files(
     (source / "series" / "readme.txt").write_text("not a scan file")
     run = _run(tmp_path)
 
-    subjects = capture(source, run)
+    subjects = capture(source, run.working_dir)[0]
 
     all_files = [metadata.path for subject in subjects for metadata in subject.files]
     assert all(p.suffix == ".dcm" for p in all_files)
@@ -81,7 +81,7 @@ def test_capture_raises_when_no_dicom_files_are_found(tmp_path: Path) -> None:
     run = _run(tmp_path)
 
     with pytest.raises(NoDicomFilesFoundError):
-        capture(source, run)
+        capture(source, run.working_dir)[0]
 
 
 def test_capture_refuses_a_source_directory_containing_a_symlink(
@@ -95,7 +95,7 @@ def test_capture_refuses_a_source_directory_containing_a_symlink(
     run = _run(tmp_path)
 
     with pytest.raises(UnsafeSourceError):
-        capture(source, run)
+        capture(source, run.working_dir)[0]
 
 
 def test_capture_stops_on_a_source_file_it_cannot_open(
@@ -111,6 +111,6 @@ def test_capture_stops_on_a_source_file_it_cannot_open(
         pytest.skip("file permissions are not enforced for this user")
     try:
         with pytest.raises(UnsafeSourceError, match="no longer accessible"):
-            capture(source, _run(tmp_path))
+            capture(source, _run(tmp_path).working_dir)[0]
     finally:
         locked.chmod(0o600)
