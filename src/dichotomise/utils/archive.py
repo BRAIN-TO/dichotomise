@@ -57,14 +57,10 @@ def _checksum_path_for(archive_path: Path) -> Path:
     return archive_path.with_name(f"{name}.sha256")
 
 
-def _sha256_of(path: Path) -> str:
-    return fs.file_digest(path)
-
-
 def _finish_archive(archive_path: Path) -> Archive:
     """Write the checksum sidecar and verify the archive before returning it."""
     checksum_path = _checksum_path_for(archive_path)
-    checksum_path.write_text(_sha256_of(archive_path) + "\n")
+    checksum_path.write_text(fs.file_digest(archive_path) + "\n")
     archive = Archive(path=archive_path, checksum_path=checksum_path)
     if not verify_archive(archive.path, archive.checksum_path):
         raise ArchiveVerificationError(f"Archive verification failed: {archive.path}")
@@ -211,4 +207,4 @@ def _write_tarball(
 def verify_archive(archive_path: Path, checksum_path: Path) -> bool:
     """Return whether `archive_path`'s current contents match its recorded checksum."""
     expected = checksum_path.read_text().split()[0]
-    return _sha256_of(archive_path) == expected
+    return fs.file_digest(archive_path) == expected
