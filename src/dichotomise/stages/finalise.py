@@ -264,7 +264,7 @@ def finalise_review(
         )
     else:
         for path in expected:
-            if file_digest(path) != verified_digests[path]:
+            if file_digest(path) != verified_digests.get(path):
                 raise FinaliseVerificationError(f"Review file differs from its source: {path}")
     name = (
         f"{safe_filename_text(subject_label)}_{safe_filename_text(archive_token)}"

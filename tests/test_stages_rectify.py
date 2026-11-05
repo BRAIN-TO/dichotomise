@@ -52,7 +52,7 @@ def test_rectify_copies_retained_files_into_their_agreed_names(tmp_path: Path) -
         review=[],
     )
 
-    result = rectify(sift_result)
+    result = rectify(sift_result, {}, {})
 
     expected_a = result.rectified_dir / "021-diffusion" / "021_0001_sop-1_e01.dcm"
     expected_b = result.rectified_dir / "021-diffusion" / "021_0002_sop-1_e01.dcm"
@@ -81,7 +81,7 @@ def test_rectify_writes_a_byte_identical_repeat_in_another_folder_only_once(
         review=[],
     )
 
-    result = rectify(sift_result)
+    result = rectify(sift_result, {}, {})
 
     expected = result.rectified_dir / "021-diffusion" / "021_0001_sop-1_e01.dcm"
     assert [f.path for f in result.files] == [expected]
@@ -114,7 +114,7 @@ def test_rectify_raises_when_two_different_files_would_share_a_name(
     )
 
     with pytest.raises(DichotomiseError):
-        rectify(sift_result)
+        rectify(sift_result, {}, {})
 
 
 def test_rectify_review_renames_files_using_the_same_naming_scheme(tmp_path: Path) -> None:
@@ -130,7 +130,7 @@ def test_rectify_review_renames_files_using_the_same_naming_scheme(tmp_path: Pat
         review=[ReviewFile(_metadata(path_a, instance_number=1), "duplicate")],
     )
 
-    result = rectify_review(sift_result)
+    result = rectify_review(sift_result, {})
 
     expected = result.review_rectified_dir / "021-diffusion" / "021_0001_sop-1_e01.dcm"
     assert expected.read_bytes() == b"duplicate content"
@@ -158,7 +158,7 @@ def test_rectify_review_disambiguates_colliding_names_instead_of_raising(tmp_pat
         ],
     )
 
-    result = rectify_review(sift_result)
+    result = rectify_review(sift_result, {})
 
     folder = result.review_rectified_dir / "021-diffusion"
     assert (folder / "021_0001_sop-1_e01.dcm").read_bytes() == b"first"
@@ -184,7 +184,7 @@ def test_rectify_review_writes_a_byte_identical_repeat_only_once(tmp_path: Path)
         ],
     )
 
-    result = rectify_review(sift_result)
+    result = rectify_review(sift_result, {})
 
     folder = result.review_rectified_dir / "021-diffusion"
     assert sorted(p.name for p in folder.iterdir()) == ["021_0001_sop-1_e01.dcm"]

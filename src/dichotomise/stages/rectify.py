@@ -85,8 +85,8 @@ def _copy_planned(sources: dict[Path, Path], digests: dict[Path, str]) -> None:
 
 def rectify(
     sift_result: SiftResult,
-    digests: dict[Path, str] | None = None,
-    sources: dict[Path, Path] | None = None,
+    digests: dict[Path, str],
+    sources: dict[Path, Path],
     *,
     describe_series: bool = True,
 ) -> RectifyResult:
@@ -99,15 +99,13 @@ def rectify(
     rectified name is a real ambiguity about which file the name belongs to,
     so it stops the run rather than silently picking one or numbering around it.
 
-    `digests` caches source-file SHA-256 digests (the pipeline passes the ones taken while
-    archiving the source, so the copies are checked against them). `sources` is filled with
-    each rectified file's source path, for finalise to verify later.
+    `digests` holds source-file SHA-256 digests (the pipeline passes the ones taken while
+    archiving the source, and every copy is added), so finalise can check the copies against
+    them. `sources` is filled with each rectified file's source path, for finalise to verify.
     """
-    digests = {} if digests is None else digests  # a fresh cache per call, never shared
     plan = _plan_rectify(sift_result, digests, describe_series=describe_series)
     _copy_planned(plan.sources, digests)
-    if sources is not None:
-        sources.update(plan.sources)
+    sources.update(plan.sources)
     return RectifyResult(
         plan.subject,
         plan.rectified_dir,
@@ -180,7 +178,7 @@ def _plan_rectify_review(
 
 
 def rectify_review(
-    sift_result: SiftResult, digests: dict[Path, str] | None = None, *, describe_series: bool = True
+    sift_result: SiftResult, digests: dict[Path, str], *, describe_series: bool = True
 ) -> RectifyReviewResult:
     """Copy every review file into its rectified name, tolerating collisions.
 
@@ -194,7 +192,6 @@ def rectify_review(
     being silently dropped or overwritten. `digests` is the same source-digest cache that
     `rectify()` takes.
     """
-    digests = {} if digests is None else digests  # a fresh cache per call, never shared
     plan = _plan_rectify_review(sift_result, digests, describe_series=describe_series)
     _copy_planned(plan.sources, digests)
     return RectifyReviewResult(
