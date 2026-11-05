@@ -23,9 +23,16 @@ class SanitiseResult:
 
 
 def _policy_path(target: Path, policy: Policy) -> Path:
+    """Apply the policy's SeriesDescription to the folder name.
+
+    A folder that is already just the series number (rectify() leaves the
+    description out when the policy withholds it) gets no "NA" suffix.
+    """
     instruction = policy.actions.get("SeriesDescription", {})
     action = instruction.get("action", "keep")
     if action == "remove":
+        if "-" not in target.parent.name:
+            return target
         description = "NA"
     elif action in ("replace", "add"):
         description = safe_filename_text(str(instruction.get("value", "")))
