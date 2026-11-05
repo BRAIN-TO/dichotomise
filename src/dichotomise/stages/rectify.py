@@ -65,6 +65,7 @@ class _RectifyPlan:
 def _plan_rectify(
     sift_result: SiftResult, digests: dict[Path, str], *, describe_series: bool = True
 ) -> _RectifyPlan:
+    """Decide each retained file's target name; merge identical repeats, refuse real clashes."""
     rectified_dir = sift_result.subject.working_dir / "rectify"
     sources: dict[Path, Path] = {}
     files: list[DicomMetadata] = []
@@ -106,6 +107,7 @@ def _rectify(
     *,
     describe_series: bool = True,
 ) -> RectifyResult:
+    """Plan the retained names, copy the files, and record where each one came from."""
     plan = _plan_rectify(sift_result, digests, describe_series=describe_series)
     _copy_planned(plan.sources, digests)
     if plan.sources:
@@ -171,6 +173,7 @@ class _RectifyReviewPlan:
 def _plan_rectify_review(
     sift_result: SiftResult, digests: dict[Path, str], *, describe_series: bool = True
 ) -> _RectifyReviewPlan:
+    """Decide every review file's target name, numbering clashes and merging identical repeats."""
     review_rectified_dir = sift_result.subject.working_dir / "review-rectify"
     written: dict[Path, dict[str, Path]] = {}  # name -> {content digest: final target}
     sources: dict[Path, Path] = {}
@@ -209,6 +212,7 @@ def _plan_rectify_review(
 def _rectify_review(
     sift_result: SiftResult, digests: dict[Path, str], *, describe_series: bool = True
 ) -> RectifyReviewResult:
+    """Plan the review names, copy the files, and record their digests for later finalisation."""
     plan = _plan_rectify_review(sift_result, digests, describe_series=describe_series)
     _copy_planned(plan.sources, digests)
     if plan.sources:

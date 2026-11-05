@@ -98,6 +98,7 @@ def _fingerprint(path: Path) -> Fingerprint:
 
 
 def _fingerprints(paths: list[Path]) -> dict[Path, Fingerprint]:
+    """Fingerprint every path, stopping the run if one can no longer be read."""
     try:
         return {path: _fingerprint(path) for path in paths}
     except OSError as error:

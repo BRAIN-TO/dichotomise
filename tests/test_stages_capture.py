@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -103,11 +104,8 @@ def test_capture_stops_on_a_source_file_it_cannot_open(
     locked = source / "2.dcm"
     locked.write_bytes(b"x")
     locked.chmod(0)
-    try:
-        if locked.open("rb"):  # running as root ignores the mode, so nothing to test
-            pytest.skip("file permissions are not enforced for this user")
-    except PermissionError:
-        pass
+    if os.access(locked, os.R_OK):  # e.g. running as root: nothing to test
+        pytest.skip("file permissions are not enforced for this user")
     try:
         with pytest.raises(UnsafeSourceError, match="no longer accessible"):
             capture(source, _run(tmp_path))
