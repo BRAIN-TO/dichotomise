@@ -53,3 +53,7 @@ class ArchiveCreationError(DichotomiseError):
 
 class FinaliseVerificationError(DichotomiseError):
     """Raised when the finished output does not match what was expected before archiving."""
+
+
+class SortError(DichotomiseError):
+    """Raised when a sort is refused, or when its result cannot be confirmed."""

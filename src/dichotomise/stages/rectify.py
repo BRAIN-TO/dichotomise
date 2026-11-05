@@ -46,10 +46,17 @@ class RectifyPlan:
 
 
 def plan_rectify(
-    sift_result: SiftResult, digests: dict[Path, str], *, describe_series: bool = True
+    sift_result: SiftResult,
+    digests: dict[Path, str],
+    *,
+    describe_series: bool = True,
+    rectified_dir: Path | None = None,
 ) -> RectifyPlan:
-    """Decide each retained file's target name; merge identical repeats, refuse real clashes."""
-    rectified_dir = sift_result.subject.working_dir / "rectify"
+    """Decide each retained file's target name; merge identical repeats, refuse real clashes.
+
+    The names go under `rectified_dir`, by default the subject's own `rectify/` working folder.
+    """
+    rectified_dir = rectified_dir or sift_result.subject.working_dir / "rectify"
     sources: dict[Path, Path] = {}
     files: list[DicomMetadata] = []
     target_by_source: dict[Path, Path] = {}
