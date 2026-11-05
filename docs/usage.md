@@ -146,9 +146,7 @@ Compression is always `.tar.gz`; `pigz` is used when it is on `PATH`.
 
 Source files are checked for changes while their headers are captured and
 throughout processing. These checks detect ordinary file changes; they do not
-provide a filesystem snapshot. Standalone review finalisation requires the
-private digest manifest written by review rectification. Working-file
-manifests stay outside the archived DICOM trees.
+provide a filesystem snapshot.
 
 ## Sanitisation
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -11,7 +10,6 @@ from pydicom.errors import InvalidDicomError
 
 from dichotomise.errors import FinaliseVerificationError
 from dichotomise.pydcm.identify import file_digest
-from dichotomise.pydcm.naming import rectified_path
 from dichotomise.pydcm.read import _metadata_from_dataset, _pixel_fingerprint
 from dichotomise.run import Run
 from dichotomise.stages.capture import CapturedSubject
@@ -134,58 +132,6 @@ def _verify_pixel_data(source: Path, output: Path) -> None:
 
 
 def finalise(
-    rectify_result: RectifyResult,
-    run: Run,
-    *,
-    subject_label: str,
-    sanitise_result: SanitiseResult | None = None,
-    archive_token: str | None = None,
-    on_progress: ProgressCallback | None = None,
-) -> FinaliseResult:
-    """Verify the finished output tree, then archive it into `run.archives_dir`.
-
-    Archives the sanitised tree if `--sanitise` was used, otherwise the
-    rectified tree. Named with the run's timestamp, `subject_label` (the
-    real PatientID, or the replacement label if sanitised), scan date/time,
-    and a per-run study number. The number prevents one study from replacing
-    another when their other filename fields match.
-    """
-    sources: dict[Path, Path] | None = None
-    digests: dict[Path, str] | None = None
-    if sanitise_result is None and rectify_result.files:
-        manifest = rectify_result.rectified_dir.parent / ".rectify-provenance.json"
-        try:
-            entries = json.loads(manifest.read_text())
-            expected = {
-                str(item.path.relative_to(rectify_result.rectified_dir))
-                for item in rectify_result.files
-            }
-            if not isinstance(entries, dict) or set(entries) != expected:
-                raise ValueError("Retained manifest does not match the expected files")
-            sources = {}
-            digests = {}
-            for item in rectify_result.files:
-                entry = entries[str(item.path.relative_to(rectify_result.rectified_dir))]
-                source, digest = entry["source"], entry["digest"]
-                if not isinstance(source, str) or not isinstance(digest, str):
-                    raise ValueError("Invalid retained provenance")
-                sources[item.path] = Path(source)
-                digests[Path(source)] = digest
-        except (OSError, ValueError, TypeError, KeyError) as error:
-            raise FinaliseVerificationError(f"Invalid retained provenance: {manifest}") from error
-    return _finalise(
-        rectify_result,
-        run,
-        subject_label=subject_label,
-        sanitise_result=sanitise_result,
-        archive_token=archive_token,
-        on_progress=on_progress,
-        retained_sources=sources,
-        source_digests=digests,
-    )
-
-
-def _finalise(
     rectify_result: RectifyResult | _RectifyPlan,
     run: Run,
     *,
@@ -193,15 +139,20 @@ def _finalise(
     sanitise_result: SanitiseResult | None = None,
     archive_token: str | None = None,
     on_progress: ProgressCallback | None = None,
-    source_digests: dict[Path, str] | None = None,
-    retained_sources: dict[Path, Path] | None = None,
+    source_digests: dict[Path, str],
+    retained_sources: dict[Path, Path],
     expected_pixels: dict[Path, tuple[object, ...]] | None = None,
     expected_identities: dict[Path, tuple[str, str]] | None = None,
 ) -> FinaliseResult:
-    """Verify the output tree file by file, then archive it with a checksum.
+    """Verify the finished output tree file by file, then archive it into `run.archives_dir`.
 
-    The checks depend on the run: copies are compared with the source digests; sanitised
-    files with the pixel fingerprints and identities recorded while sanitising.
+    Archives the sanitised tree if `--sanitise` was used, otherwise the rectified tree. Named
+    with the run's timestamp, `subject_label` (the real PatientID, or the replacement label if
+    sanitised), scan date/time and a per-run study number, so one study never replaces another.
+
+    The checks depend on the run: copies are compared with the source digests and
+    `retained_sources` (rectified file to source file); sanitised files with the pixel
+    fingerprints and identities recorded while sanitising.
     """
     source_dir = sanitise_result.sanitised_dir if sanitise_result else rectify_result.rectified_dir
     expected_files = (
@@ -209,18 +160,12 @@ def _finalise(
     )
     _verify_output_tree(expected_files, source_dir, expected_pixels, expected_identities)
 
-    source_by_target = retained_sources
-    if source_by_target is None:
-        source_by_target = {
-            rectified_path(rectify_result.rectified_dir, item): item.path
-            for item in rectify_result.subject.files
-        }
     if sanitise_result is None:
         for item in rectify_result.files:
-            original = source_by_target.get(item.path)
+            original = retained_sources.get(item.path)
             if original is None:
                 raise FinaliseVerificationError(f"No source provenance for {item.path}")
-            if source_digests is not None and original not in source_digests:
+            if original not in source_digests:
                 raise FinaliseVerificationError(f"No source digest for {original}")
             if file_digest(original, source_digests) != file_digest(item.path):
                 raise FinaliseVerificationError(f"Copied file differs from its source: {item.path}")
@@ -255,58 +200,6 @@ def _finalise(
     )
 
 
-def finalise_review(
-    rectify_review_result: RectifyReviewResult,
-    run: Run,
-    *,
-    subject_label: str,
-    archive_token: str,
-    sanitise_review_result: SanitiseReviewResult | None = None,
-    on_progress: ProgressCallback | None = None,
-) -> Archive | None:
-    """Archive the review tree into archives/, or None if there were no review files.
-
-    Archives the sanitised copy when --sanitise was used; otherwise it uses
-    the renamed-but-unsanitised review tree. Runs unconditionally and
-    independently of --keep-working-files.
-    """
-    if not rectify_review_result.files:
-        return None
-    manifest = rectify_review_result.review_rectified_dir.parent / ".review-rectify-digests.json"
-    try:
-        entries = json.loads(manifest.read_text())
-        expected = {
-            str(item.path.relative_to(rectify_review_result.review_rectified_dir))
-            for item in rectify_review_result.files
-        }
-        if not isinstance(entries, dict) or set(entries) != expected:
-            raise ValueError("Review manifest does not match the expected files")
-        digests = {
-            item.path: entries[
-                str(item.path.relative_to(rectify_review_result.review_rectified_dir))
-            ]
-            for item in rectify_review_result.files
-        }
-    except (OSError, ValueError, TypeError) as error:
-        raise FinaliseVerificationError(f"Invalid review provenance: {manifest}") from error
-    for path, digest in digests.items():
-        try:
-            matches = isinstance(digest, str) and file_digest(path) == digest
-        except OSError as error:
-            raise FinaliseVerificationError(f"Review file is inaccessible: {path}") from error
-        if not matches:
-            raise FinaliseVerificationError(f"Review file differs from its source: {path}")
-    return _finalise_review(
-        rectify_review_result,
-        run,
-        subject_label=subject_label,
-        archive_token=archive_token,
-        sanitise_review_result=sanitise_review_result,
-        on_progress=on_progress,
-        verified_digests=digests,
-    )
-
-
 def _verify_sanitised_review(
     rectify_review_result: RectifyReviewResult | _RectifyReviewPlan,
     sanitise_review_result: SanitiseReviewResult,
@@ -330,7 +223,7 @@ def _verify_sanitised_review(
                 _verify_identity(dataset, output, expected_identities[output])
 
 
-def _finalise_review(
+def finalise_review(
     rectify_review_result: RectifyReviewResult | _RectifyReviewPlan,
     run: Run,
     *,
@@ -340,9 +233,14 @@ def _finalise_review(
     on_progress: ProgressCallback | None = None,
     expected_pixels: dict[Path, tuple[object, ...]] | None = None,
     expected_identities: dict[Path, tuple[str, str]] | None = None,
-    verified_digests: dict[Path, str] | None = None,
+    verified_digests: dict[Path, str],
 ) -> Archive | None:
-    """Verify the review tree and archive it, or return None when there are no review files."""
+    """Verify the review tree and archive it, or return None when there are no review files.
+
+    Archives the sanitised copy when `--sanitise` was used; otherwise the renamed but
+    unsanitised review tree, whose files must match `verified_digests`. Runs unconditionally,
+    independently of `--keep-working-files`.
+    """
     if not rectify_review_result.files:
         return None
     source_dir = (
@@ -364,7 +262,7 @@ def _finalise_review(
         _verify_sanitised_review(
             rectify_review_result, sanitise_review_result, expected_pixels, expected_identities
         )
-    elif verified_digests is not None:
+    else:
         for path in expected:
             if file_digest(path) != verified_digests[path]:
                 raise FinaliseVerificationError(f"Review file differs from its source: {path}")

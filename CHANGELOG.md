@@ -7,7 +7,6 @@ pass the checks; inputs that fail one now stop the run instead of being processe
 
 - Detect source files that change during capture or processing, and carry source provenance through to finalisation.
 - Verify sanitised files after writing them: pixel data and interpretation fields, `PatientID`, and the SOP Instance UID in the header and file meta.
-- Require a private digest manifest when finalising standalone retained or review files, and verify standalone sanitised output.
 - Reuse the digests gathered while archiving the source to detect duplicates and check copies.
 - Write sanitised output directly from the source files unless `--keep-working-files` asks for the intermediate copies; move verified unzipped output into place instead of copying it.
 - Apply a policy-supplied series description (`replace`/`add`) to folder names.

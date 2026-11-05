@@ -21,7 +21,7 @@ from dichotomise.pydcm.relabel import (
 from dichotomise.run import Run, start_run
 from dichotomise.stages.audit import AuditResult, _audit_files
 from dichotomise.stages.capture import CapturedSubject, Fingerprint, _capture, _check_sources
-from dichotomise.stages.finalise import _finalise, _finalise_review
+from dichotomise.stages.finalise import finalise, finalise_review
 from dichotomise.stages.rectify import (
     _plan_rectify,
     _plan_rectify_review,
@@ -306,7 +306,7 @@ def _process_subject(
     review_archive_description = f"{subject_prefix}: archiving review files"
     review_archive = _run_stage(
         review_archive_description,
-        lambda: _finalise_review(
+        lambda: finalise_review(
             rectify_review_result,
             run,
             subject_label=subject_label,
@@ -333,7 +333,7 @@ def _process_subject(
     _check_sources(source_fingerprints)
     finalise_result = _run_stage(
         finalise_description,
-        lambda: _finalise(
+        lambda: finalise(
             rectify_result,
             run,
             subject_label=subject_label,
