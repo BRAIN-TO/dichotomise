@@ -9,7 +9,7 @@ description = "Audit, sort, rectify, and archive DICOM exports from Siemens XA60
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
-license-files = ["LICENSE"]
+license-files = ["LICENCE"]
 authors = [{name = "DIChOtoMise contributors"}]
 keywords = ["DICOM", "medical-imaging", "Siemens", "anonymisation", "audit"]
 classifiers = [
