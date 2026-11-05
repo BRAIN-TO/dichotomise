@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -25,21 +26,28 @@ def make_subject(working_dir: Path, source_root: Path | None = None) -> Captured
 
 
 def force_pool(monkeypatch: pytest.MonkeyPatch) -> list[int]:
-    """Make every `_parallel_map` use a pool, even for two items, and record each pool started.
+    """Make every `_parallel_map` use a pool, even for two items, and record each pool run.
 
-    Returns a list that gains one entry per pool; a test asserts it is not empty so a run that
-    silently fell back to serial cannot pass as a parallel one.
+    Returns a list that gains one entry per pool map that ran (finished or raised, but did not
+    break); a test asserts it is not empty so a run that silently fell back to serial cannot
+    pass as a parallel one.
     """
     from concurrent.futures import ProcessPoolExecutor
+    from concurrent.futures.process import BrokenProcessPool
 
     from dichotomise.pydcm import read
 
     started: list[int] = []
 
     class CountingPool(ProcessPoolExecutor):
-        def __init__(self, *args: Any, **kwargs: Any) -> None:
-            started.append(1)
-            super().__init__(*args, **kwargs)
+        def map(self, *args: Any, **kwargs: Any) -> Any:
+            try:
+                return list(super().map(*args, **kwargs))
+            except BrokenProcessPool:  # the work is about to be redone serially: not a pool run
+                raise
+            finally:
+                if sys.exc_info()[0] is not BrokenProcessPool:
+                    started.append(1)
 
     monkeypatch.setattr(read, "_PARALLEL_MIN_FILES", 1)
     monkeypatch.setattr(read, "_worker_count", lambda: 2)

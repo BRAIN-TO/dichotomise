@@ -238,20 +238,26 @@ def _parallel_map(
     """Apply `function` to every item, in order, using a pool of processes when there are many.
 
     Below `_PARALLEL_MIN_FILES` items (read at call time, so a test can lower it), or when no pool
-    can be started here (a sandbox without shared memory, no `forkserver` on Windows, a broken
-    pool), the items are mapped one by one. That is safe to repeat because `function` must only
-    read, or rewrite identical output. The first failure raised is the first in input order,
-    exactly as serially. `function` must be a module-level function (workers pickle it).
+    can start here or one breaks (a sandbox without shared memory, no `forkserver` on Windows, a
+    killed worker), the items are mapped one by one. That is safe to repeat because `function`
+    must only read, or rewrite identical output. An error `function` itself raises is not retried:
+    it is the first in input order, exactly as serially. `function` must be a module-level
+    function (workers pickle it).
     """
     workers = _worker_count()
     if len(items) >= _PARALLEL_MIN_FILES and workers >= 2:
         try:
             # forkserver, not fork: the CLI runs this beside a ticker thread.
             context = multiprocessing.get_context("forkserver")
-            with ProcessPoolExecutor(max_workers=workers, mp_context=context) as pool:
-                return list(pool.map(function, items, chunksize=chunksize))
-        except (OSError, NotImplementedError, ValueError, BrokenProcessPool):
-            pass
+            pool = ProcessPoolExecutor(max_workers=workers, mp_context=context)
+        except (OSError, NotImplementedError, ValueError):
+            pool = None  # e.g. a sandbox without shared memory, or no forkserver on Windows
+        if pool is not None:
+            try:
+                with pool:
+                    return list(pool.map(function, items, chunksize=chunksize))
+            except BrokenProcessPool:
+                pass  # a worker died: do the work again here, where the real error will show
     return [function(item) for item in items]
 
 
