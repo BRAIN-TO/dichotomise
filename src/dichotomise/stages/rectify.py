@@ -37,19 +37,6 @@ class RectifyResult:
     target_by_source: dict[Path, Path] = field(default_factory=dict)
 
 
-def rectify(sift_result: SiftResult, *, describe_series: bool = True) -> RectifyResult:
-    """Copy every retained file into its rectified name and folder.
-
-    A byte-identical file that lands on a name already written is the same
-    file again (for example a copy of an export in another folder), so it is
-    not written or listed a second time (`merged_identical_count` counts
-    them). Two different scan files that would land on the exact same
-    rectified name is a real ambiguity about which file the name belongs to,
-    so it stops the run rather than silently picking one or numbering around it.
-    """
-    return _rectify(sift_result, {}, describe_series=describe_series)
-
-
 @dataclass(frozen=True)
 class _RectifyPlan:
     """The decided names for a subject's retained files; nothing is copied yet."""
@@ -100,14 +87,23 @@ def _copy_planned(sources: dict[Path, Path], digests: dict[Path, str]) -> None:
         digests[target] = digests[source]
 
 
-def _rectify(
+def rectify(
     sift_result: SiftResult,
-    digests: dict[Path, str],
+    digests: dict[Path, str] | None = None,
     sources: dict[Path, Path] | None = None,
     *,
     describe_series: bool = True,
 ) -> RectifyResult:
-    """Plan the retained names, copy the files, and record where each one came from."""
+    """Copy every retained file into its rectified name and folder.
+
+    A byte-identical file that lands on a name already written is the same
+    file again (for example a copy of an export in another folder), so it is
+    not written or listed a second time (`merged_identical_count` counts
+    them). Two different scan files that would land on the exact same
+    rectified name is a real ambiguity about which file the name belongs to,
+    so it stops the run rather than silently picking one or numbering around it.
+    """
+    digests = {} if digests is None else digests  # a fresh cache per call, never shared
     plan = _plan_rectify(sift_result, digests, describe_series=describe_series)
     _copy_planned(plan.sources, digests)
     if plan.sources:
@@ -141,21 +137,6 @@ class RectifyReviewResult:
     collision_count: int
     merged_identical_count: int = 0
     target_by_source: dict[Path, Path] = field(default_factory=dict)
-
-
-def rectify_review(sift_result: SiftResult, *, describe_series: bool = True) -> RectifyReviewResult:
-    """Copy every review file into its rectified name, tolerating collisions.
-
-    Uses the same naming as rectify() so a reviewer can see immediately
-    which series/instance a review file's metadata claims to belong to --
-    including when that claim is wrong (misfiled) or shared with another
-    file (duplicate). A byte-identical file that lands on a name already
-    written is the same file again, so it is not written a second time
-    (`merged_identical_count` counts them). A name shared by files that
-    differ keeps a disambiguated name (`-dup01`, `-dup02`, ...) instead of
-    being silently dropped or overwritten.
-    """
-    return _rectify_review(sift_result, {}, describe_series=describe_series)
 
 
 @dataclass(frozen=True)
@@ -209,10 +190,21 @@ def _plan_rectify_review(
     )
 
 
-def _rectify_review(
-    sift_result: SiftResult, digests: dict[Path, str], *, describe_series: bool = True
+def rectify_review(
+    sift_result: SiftResult, digests: dict[Path, str] | None = None, *, describe_series: bool = True
 ) -> RectifyReviewResult:
-    """Plan the review names, copy the files, and record their digests for later finalisation."""
+    """Copy every review file into its rectified name, tolerating collisions.
+
+    Uses the same naming as rectify() so a reviewer can see immediately
+    which series/instance a review file's metadata claims to belong to --
+    including when that claim is wrong (misfiled) or shared with another
+    file (duplicate). A byte-identical file that lands on a name already
+    written is the same file again, so it is not written a second time
+    (`merged_identical_count` counts them). A name shared by files that
+    differ keeps a disambiguated name (`-dup01`, `-dup02`, ...) instead of
+    being silently dropped or overwritten.
+    """
+    digests = {} if digests is None else digests  # a fresh cache per call, never shared
     plan = _plan_rectify_review(sift_result, digests, describe_series=describe_series)
     _copy_planned(plan.sources, digests)
     if plan.sources:

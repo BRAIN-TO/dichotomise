@@ -28,19 +28,13 @@ def _study_archive_path(subject: CapturedSubject, run: Run) -> Path:
 
 
 def source_archive(
-    subject: CapturedSubject, run: Run, *, on_progress: ProgressCallback | None = None
-) -> Archive:
-    """Archive one subject's original source files, by their path under `source_root`."""
-    return _source_archive(subject, run, on_progress=on_progress)
-
-
-def _source_archive(
     subject: CapturedSubject,
     run: Run,
     *,
     on_progress: ProgressCallback | None = None,
     source_digests: dict[Path, str] | None = None,
 ) -> Archive:
+    """Archive one subject's original source files, by their path under `source_root`."""
     paths = sorted(metadata.path for metadata in subject.files)
     entries = ((path, path.relative_to(subject.source_root)) for path in paths)
     return _write_tarball(entries, _study_archive_path(subject, run), on_progress, source_digests)

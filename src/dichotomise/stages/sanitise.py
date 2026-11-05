@@ -82,11 +82,13 @@ def _renamed_for_uid(target: Path, old_uid: str, new_uid: str) -> Path:
 
 
 def sanitise(
-    rectify_result: RectifyResult,
+    rectify_result: RectifyResult | _RectifyPlan,
     *,
     policy: Policy,
     subject_label: str,
     replacement_cache: dict[str, str] | None = None,
+    expected_pixels: dict[Path, tuple[object, ...]] | None = None,
+    expected_identities: dict[Path, tuple[str, str]] | None = None,
 ) -> SanitiseResult:
     """Write a sanitised copy of every rectified file, next to (not over) the original.
 
@@ -96,23 +98,6 @@ def sanitise(
     `replacement_cache` to also share it with `sanitise_review()`, so a UID
     common to a retained and a review file still gets the same replacement.
     """
-    return _sanitise(
-        rectify_result,
-        policy=policy,
-        subject_label=subject_label,
-        replacement_cache=replacement_cache,
-    )
-
-
-def _sanitise(
-    rectify_result: RectifyResult | _RectifyPlan,
-    *,
-    policy: Policy,
-    subject_label: str,
-    replacement_cache: dict[str, str] | None = None,
-    expected_pixels: dict[Path, tuple[object, ...]] | None = None,
-    expected_identities: dict[Path, tuple[str, str]] | None = None,
-) -> SanitiseResult:
     sanitised_dir = rectify_result.subject.working_dir / "sanitise"
     replacement_cache = {} if replacement_cache is None else replacement_cache
     files = _sanitise_files(
@@ -145,31 +130,6 @@ class SanitiseReviewResult:
 
 
 def sanitise_review(
-    rectify_review_result: RectifyReviewResult,
-    *,
-    policy: Policy,
-    subject_label: str,
-    scan_date: str,
-    replacement_cache: dict[str, str],
-) -> SanitiseReviewResult | None:
-    """Write a sanitised copy of every rectified review file, or None if there are none.
-
-    Filenames/paths are preserved as rectify_review() produced them, except
-    that a regenerated SOP Instance UID replaces the original one in the
-    filename; otherwise only DICOM tag content is scrubbed. Shares `replacement_cache` with the
-    retained-files sanitise() call so a UID appearing in both a retained and
-    a review file regenerates to the same new value.
-    """
-    return _sanitise_review(
-        rectify_review_result,
-        policy=policy,
-        subject_label=subject_label,
-        scan_date=scan_date,
-        replacement_cache=replacement_cache,
-    )
-
-
-def _sanitise_review(
     rectify_review_result: RectifyReviewResult | _RectifyReviewPlan,
     *,
     policy: Policy,
@@ -179,6 +139,14 @@ def _sanitise_review(
     expected_pixels: dict[Path, tuple[object, ...]] | None = None,
     expected_identities: dict[Path, tuple[str, str]] | None = None,
 ) -> SanitiseReviewResult | None:
+    """Write a sanitised copy of every rectified review file, or None if there are none.
+
+    Filenames/paths are preserved as rectify_review() produced them, except
+    that a regenerated SOP Instance UID replaces the original one in the
+    filename; otherwise only DICOM tag content is scrubbed. Shares `replacement_cache` with the
+    retained-files sanitise() call so a UID appearing in both a retained and
+    a review file regenerates to the same new value.
+    """
     if not rectify_review_result.files:
         return None
     sanitised_review_dir = rectify_review_result.review_rectified_dir.parent / "sanitise-review"

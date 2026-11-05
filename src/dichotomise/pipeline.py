@@ -25,8 +25,8 @@ from dichotomise.stages.finalise import _finalise, _finalise_review
 from dichotomise.stages.rectify import (
     _plan_rectify,
     _plan_rectify_review,
-    _rectify,
-    _rectify_review,
+    rectify,
+    rectify_review,
 )
 from dichotomise.stages.reports import (
     pseudonymised_audit,
@@ -40,9 +40,9 @@ from dichotomise.stages.reports import (
     write_source_manifest,
     write_source_map,
 )
-from dichotomise.stages.sanitise import _sanitise, _sanitise_review
+from dichotomise.stages.sanitise import sanitise, sanitise_review
 from dichotomise.stages.sift import sift
-from dichotomise.stages.source_archive import _source_archive
+from dichotomise.stages.source_archive import source_archive
 from dichotomise.utils.archive import Archive
 from dichotomise.utils.text import safe_filename_text
 
@@ -164,7 +164,7 @@ def _archive_source_subject(
     )
     _check_sources(fingerprints)  # nothing may have changed since capture read the headers
     digests: dict[Path, str] = {}
-    archive = _source_archive(subject, run, on_progress=on_progress, source_digests=digests)
+    archive = source_archive(subject, run, on_progress=on_progress, source_digests=digests)
     _check_sources(fingerprints)
     return archive, digests
 
@@ -258,7 +258,7 @@ def _process_subject(
         lambda: (
             _plan_rectify(sift_result, source_digests, describe_series=describe_series)
             if direct
-            else _rectify(
+            else rectify(
                 sift_result, source_digests, retained_sources, describe_series=describe_series
             )
         ),
@@ -269,7 +269,7 @@ def _process_subject(
         lambda: (
             _plan_rectify_review(sift_result, source_digests, describe_series=describe_series)
             if direct
-            else _rectify_review(sift_result, source_digests, describe_series=describe_series)
+            else rectify_review(sift_result, source_digests, describe_series=describe_series)
         ),
         on_stage,
     )
@@ -282,7 +282,7 @@ def _process_subject(
         replacement_cache: dict[str, str] = {}
         sanitise_result = _run_stage(
             f"{subject_prefix}: sanitising files",
-            lambda: _sanitise(
+            lambda: sanitise(
                 rectify_result,
                 policy=policy,
                 subject_label=subject_label,
@@ -294,7 +294,7 @@ def _process_subject(
         )
         sanitise_review_result = _run_stage(
             f"{subject_prefix}: sanitising review files",
-            lambda: _sanitise_review(
+            lambda: sanitise_review(
                 rectify_review_result,
                 policy=policy,
                 subject_label=subject_label,
