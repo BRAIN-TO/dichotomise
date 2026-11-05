@@ -4,25 +4,12 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pydicom
+from helpers import make_subject
 
 from dichotomise.pydcm.read import read_metadata
 from dichotomise.pydcm.relabel import Policy, load_policy
-from dichotomise.stages.capture import CapturedSubject
 from dichotomise.stages.rectify import RectifyResult, RectifyReviewResult
 from dichotomise.stages.sanitise import sanitise, sanitise_review
-
-
-def _subject(working_dir: Path) -> CapturedSubject:
-    return CapturedSubject(
-        subject_id="sub-01",
-        patient_name="Doe^Jane^19900101",
-        study_instance_uid="study-a",
-        scan_date="20260101",
-        scan_time="120000",
-        files=[],
-        source_root=working_dir,
-        working_dir=working_dir,
-    )
 
 
 def test_sanitise_applies_the_policy_and_writes_a_new_tree(
@@ -37,7 +24,7 @@ def test_sanitise_applies_the_policy_and_writes_a_new_tree(
         InstitutionName="Sunnybrook",
     )
 
-    subject = _subject(tmp_path / "capture")
+    subject = make_subject(tmp_path / "capture")
     from dichotomise.pydcm.read import read_metadata
 
     rectify_result = RectifyResult(
@@ -66,7 +53,7 @@ def test_full_policy_does_not_keep_series_description_in_folder(
         rectified_dir / "001-private_name" / "1.dcm", SeriesDescription="private_name"
     )
     result = sanitise(
-        RectifyResult(_subject(tmp_path), rectified_dir, [read_metadata(source)]),
+        RectifyResult(make_subject(tmp_path), rectified_dir, [read_metadata(source)]),
         policy=load_policy("full"),
         subject_label="sub-0001",
     )
@@ -84,7 +71,7 @@ def test_series_folder_uses_resolved_policy_placeholder(
         actions={"SeriesDescription": {"action": "replace", "value": "<subject-label>"}},
     )
     result = sanitise(
-        RectifyResult(_subject(tmp_path), rectified_dir, [read_metadata(source)]),
+        RectifyResult(make_subject(tmp_path), rectified_dir, [read_metadata(source)]),
         policy=policy,
         subject_label="sub-0001",
     )
@@ -102,7 +89,7 @@ def test_sanitise_regenerates_uids_consistently_across_files(
         rectified_dir / "021-DWI" / "2.dcm", StudyInstanceUID="study-a", InstanceNumber=2
     )
 
-    subject = _subject(tmp_path / "capture")
+    subject = make_subject(tmp_path / "capture")
     from dichotomise.pydcm.read import read_metadata
 
     rectify_result = RectifyResult(
@@ -179,7 +166,7 @@ def test_sanitise_review_shares_replacement_cache_with_retained_sanitise(
     retained_file = make_dicom_file(
         rectified_dir / "021-DWI" / "021_series-a_0001_e01.dcm", StudyInstanceUID="shared-study"
     )
-    subject = _subject(tmp_path / "capture")
+    subject = make_subject(tmp_path / "capture")
     rectify_result = RectifyResult(
         subject=subject, rectified_dir=rectified_dir, files=[read_metadata(retained_file)]
     )
@@ -230,7 +217,7 @@ def test_sanitise_renames_files_so_the_filename_matches_the_regenerated_sop_uid(
     )
     metadata = read_metadata(source)
     rectify_result = RectifyResult(
-        subject=_subject(tmp_path), rectified_dir=rectified_dir, files=[metadata]
+        subject=make_subject(tmp_path), rectified_dir=rectified_dir, files=[metadata]
     )
 
     result = sanitise(

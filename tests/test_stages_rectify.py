@@ -4,10 +4,10 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from helpers import make_subject
 
 from dichotomise.errors import DichotomiseError
 from dichotomise.pydcm.read import DicomMetadata
-from dichotomise.stages.capture import CapturedSubject
 from dichotomise.stages.rectify import rectify, rectify_review
 from dichotomise.stages.sift import ReviewFile, SiftResult
 
@@ -32,19 +32,6 @@ def _metadata(path: Path, **overrides: object) -> DicomMetadata:
     return DicomMetadata(**defaults)  # type: ignore[arg-type]
 
 
-def _subject(working_dir: Path, source_root: Path) -> CapturedSubject:
-    return CapturedSubject(
-        subject_id="sub-01",
-        patient_name="Doe^Jane^19900101",
-        study_instance_uid="study-a",
-        scan_date="20260101",
-        scan_time="120000",
-        files=[],
-        source_root=source_root,
-        working_dir=working_dir,
-    )
-
-
 def test_rectify_copies_retained_files_into_their_agreed_names(tmp_path: Path) -> None:
     source_dir = tmp_path / "export"
     path_a = source_dir / "021-DWI" / "1.dcm"
@@ -53,7 +40,7 @@ def test_rectify_copies_retained_files_into_their_agreed_names(tmp_path: Path) -
     path_b = source_dir / "021-DWI" / "2.dcm"
     path_b.write_bytes(b"second")
 
-    subject = _subject(tmp_path / "working" / "sub-01", source_dir)
+    subject = make_subject(tmp_path / "working" / "sub-01", source_dir)
     sift_result = SiftResult(
         subject=subject,
         retained=[
@@ -85,7 +72,7 @@ def test_rectify_writes_a_byte_identical_repeat_in_another_folder_only_once(
         path.parent.mkdir(parents=True)
         path.write_bytes(b"same bytes")
 
-    subject = _subject(tmp_path / "working" / "sub-01", source_dir)
+    subject = make_subject(tmp_path / "working" / "sub-01", source_dir)
     sift_result = SiftResult(
         subject=subject,
         retained=[_metadata(path_a), _metadata(path_b)],
@@ -111,7 +98,7 @@ def test_rectify_raises_when_two_different_files_would_share_a_name(
         source_dir / "021-DWI" / "2.dcm", SeriesInstanceUID="series-dwi", InstanceNumber=2
     )
 
-    subject = _subject(tmp_path / "working" / "sub-01", source_dir)
+    subject = make_subject(tmp_path / "working" / "sub-01", source_dir)
     # Both mapped (deliberately, via the metadata override) to the same
     # rectified name (same series, same instance number) despite genuinely
     # different underlying file content.
@@ -134,7 +121,7 @@ def test_rectify_review_renames_files_using_the_same_naming_scheme(tmp_path: Pat
     path_a.parent.mkdir(parents=True)
     path_a.write_bytes(b"duplicate content")
 
-    subject = _subject(tmp_path / "working" / "sub-01", source_dir)
+    subject = make_subject(tmp_path / "working" / "sub-01", source_dir)
     sift_result = SiftResult(
         subject=subject,
         retained=[],
@@ -157,7 +144,7 @@ def test_rectify_review_disambiguates_colliding_names_instead_of_raising(tmp_pat
     path_b = source_dir / "021-DWI" / "2.dcm"
     path_b.write_bytes(b"second")
 
-    subject = _subject(tmp_path / "working" / "sub-01", source_dir)
+    subject = make_subject(tmp_path / "working" / "sub-01", source_dir)
     # Both misfiled/duplicate files claim the exact same series+instance,
     # which is expected to happen in review -- it must not stop the run.
     sift_result = SiftResult(
@@ -185,7 +172,7 @@ def test_rectify_review_writes_a_byte_identical_repeat_only_once(tmp_path: Path)
     path_b = source_dir / "021-DWI" / "3.dcm"
     path_b.write_bytes(b"same bytes")
 
-    subject = _subject(tmp_path / "working" / "sub-01", source_dir)
+    subject = make_subject(tmp_path / "working" / "sub-01", source_dir)
     sift_result = SiftResult(
         subject=subject,
         retained=[],
