@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+Integrity and provenance checks, plus speed-ups. Sanitised and archived output is unchanged for inputs that
+pass the checks; inputs that fail one now stop the run instead of being processed.
+
+- Detect source files that change during capture or processing, and carry source provenance through to finalisation.
+- Verify sanitised files after writing them: pixel data and interpretation fields, `PatientID`, and the SOP Instance UID in the header and file meta.
+- Require a private digest manifest when finalising standalone retained or review files, and verify standalone sanitised output.
+- Reuse the digests gathered while archiving the source to detect duplicates and check copies.
+- Write sanitised output directly from the source files unless `--keep-working-files` asks for the intermediate copies; move verified unzipped output into place instead of copying it.
+- Apply a policy-supplied series description (`replace`/`add`) to folder names.
+- Validate every study label and policy before archiving, and stop the compressor promptly on interruption.
+- Preserve policy-added code sequences. Share the image-verification, sanitisation and audit-folder summary code between stages.
+- Split the README into `docs/` guides.
+
 ## v2.8.0
 
 **Privacy fix: re-run any data sanitised with v2.7.4 or earlier before you share it.** With `standard`,
