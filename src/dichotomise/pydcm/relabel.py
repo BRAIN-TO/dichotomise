@@ -294,6 +294,26 @@ def _regenerate_field(
         setattr(dataset, field, _new_uid_for(original, replacement_cache))
 
 
+def _remapped_uid(
+    value: str, replacement_cache: MutableMapping[str, str], follow_only: bool
+) -> str:
+    """The value a UID takes after the policy's own actions: unchanged, followed or newly issued.
+
+    Empty values, registry UIDs and values that are already replacements stay as they are.
+    Otherwise `follow_only` replaces the value only if the run has already regenerated it;
+    without it, every other UID is reissued.
+    """
+    if (
+        not value
+        or value.startswith(_REGISTRY_UID_PREFIX)
+        or (_NEW_UID_MARK + value) in replacement_cache
+    ):
+        return value
+    if follow_only:
+        return replacement_cache.get(f"uid:{value}", value)
+    return _new_uid_for(value, replacement_cache)
+
+
 def _remap_remaining_uids(
     index: dict[int, list[Dataset]],
     explicit_fields: set[str],
@@ -329,16 +349,7 @@ def _remap_remaining_uids(
                 if many
                 else [str(element.value).strip()]
             )
-            remapped = [
-                value
-                if not value
-                or value.startswith(_REGISTRY_UID_PREFIX)
-                or (_NEW_UID_MARK + value) in replacement_cache
-                else replacement_cache.get(f"uid:{value}", value)
-                if follow_only
-                else _new_uid_for(value, replacement_cache)
-                for value in values
-            ]
+            remapped = [_remapped_uid(value, replacement_cache, follow_only) for value in values]
             if remapped != values:
                 element.value = remapped if many else remapped[0]
 
