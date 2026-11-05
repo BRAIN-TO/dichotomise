@@ -416,21 +416,14 @@ def test_apply_policy_minimal_gives_a_random_name_and_scandate_birthdate() -> No
     assert dataset.PatientBirthDate == "20260914"
 
 
-def _item(**fields: object) -> Dataset:
-    item = Dataset()
-    for key, value in fields.items():
-        setattr(item, key, value)
-    return item
-
-
 def test_apply_policy_reaches_fields_at_every_depth_of_nested_sequences() -> None:
     dataset = Dataset()
     dataset.PatientID = "real-id"
-    dataset.OtherPatientIDsSequence = [_item(PatientID="real-id-too")]
+    dataset.OtherPatientIDsSequence = [_dataset(PatientID="real-id-too")]
     dataset.ReferencedStudySequence = [
-        _item(
+        _dataset(
             ReferencedSOPInstanceUID="1.2.3",
-            ReferencedSeriesSequence=[_item(ReferencedSOPInstanceUID="1.2.3")],
+            ReferencedSeriesSequence=[_dataset(ReferencedSOPInstanceUID="1.2.3")],
         )
     ]
     policy = Policy(
@@ -454,9 +447,10 @@ def test_apply_policy_reaches_fields_at_every_depth_of_nested_sequences() -> Non
 def test_apply_policy_removes_a_sequence_that_nests_itself_and_the_fields_inside_it() -> None:
     dataset = Dataset()
     dataset.ContentSequence = [
-        _item(TextValue="secret", ContentSequence=[_item(TextValue="more secret")])
+        _dataset(TextValue="secret", ContentSequence=[_dataset(TextValue="more secret")])
     ]
-    dataset.ReferencedStudySequence = [_item(ContentSequence=[_item(TextValue="nested secret")])]
+    nested = _dataset(ContentSequence=[_dataset(TextValue="nested secret")])
+    dataset.ReferencedStudySequence = [nested]
     policy = Policy(
         name="test",
         actions={
@@ -484,12 +478,12 @@ def _referencing_pair() -> tuple[Dataset, Dataset]:
     state.SOPClassUID = "1.2.840.10008.5.1.4.1.1.11.1"
     state.DimensionOrganizationUID = "1.3.12.2.1107.5.2.9"
     state.ReferencedImageSequence = [
-        _item(
+        _dataset(
             ReferencedSOPClassUID="1.2.840.10008.5.1.4.1.1.4",
             ReferencedSOPInstanceUID="1.2.3.2",
         )
     ]
-    state.ContentSequence = [_item(CodingSchemeUID="1.3.12.2.1107.5.2")]
+    state.ContentSequence = [_dataset(CodingSchemeUID="1.3.12.2.1107.5.2")]
     return state, image
 
 
