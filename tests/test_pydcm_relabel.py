@@ -229,6 +229,38 @@ def test_sop_reference_is_regenerated_consistently_before_its_target() -> None:
     assert target.SOPInstanceUID != "1.2.3.4"
 
 
+def test_partial_policy_makes_references_follow_the_uids_it_regenerates() -> None:
+    """A policy that keeps SOPInstanceUID must still not leave the old study UID behind."""
+    study, frame, series = "1.2.9.8.7.6", "1.2.3.4.5.6", "1.2.5.5.5.5"
+    dataset = _dataset(
+        StudyInstanceUID=study,
+        FrameOfReferenceUID=frame,
+        SeriesInstanceUID=series,
+        SOPInstanceUID="1.2.3.4.5.77",
+    )
+    dataset.ReferencedFrameOfReferenceSequence = [_dataset(ReferencedFrameOfReferenceUID=frame)]
+    dataset.add_new(0x00091010, "UI", study)  # a private element holding the study UID
+    policy = Policy(
+        name="partial",
+        description="",
+        actions={
+            "StudyInstanceUID": {"action": "regenerate"},
+            "FrameOfReferenceUID": {"action": "regenerate"},
+        },
+    )
+
+    apply_policy(dataset, policy, subject_label="sub-1", scan_date="20260101", replacement_cache={})
+
+    assert dataset.StudyInstanceUID != study
+    assert dataset.ReferencedFrameOfReferenceSequence[0].ReferencedFrameOfReferenceUID == (
+        dataset.FrameOfReferenceUID
+    )
+    assert dataset[0x00091010].value == dataset.StudyInstanceUID
+    # UIDs the author chose to keep are not reissued.
+    assert dataset.SeriesInstanceUID == series
+    assert dataset.SOPInstanceUID == "1.2.3.4.5.77"
+
+
 def test_policy_applies_to_nested_datasets_and_removes_sequences() -> None:
     dataset = _dataset()
     nested = Dataset()

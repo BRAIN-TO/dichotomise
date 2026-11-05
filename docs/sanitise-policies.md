@@ -76,7 +76,9 @@ An action is one of:
   reference sequences. A policy that regenerates `SOPInstanceUID` also remaps
   every other instance UID in the file by value, except class, transfer-syntax
   and coding-scheme UIDs, registry UIDs (`1.2.840.10008.*`) and any field the
-  policy lists with a different action.
+  policy lists with a different action. A policy that regenerates some UIDs
+  but not `SOPInstanceUID` leaves the others alone: references and private
+  elements that hold a UID it did regenerate follow it, and nothing else changes.
 - `"add"` — a field that isn't present by default gets added.
 - `"scramble_date"` — replaced with a random *but valid* date, shifted by
   exactly one year (chosen randomly as +1 or -1, never 0) from the real

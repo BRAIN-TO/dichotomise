@@ -298,12 +298,16 @@ def _remap_remaining_uids(
     index: dict[int, list[Dataset]],
     explicit_fields: set[str],
     replacement_cache: MutableMapping[str, str],
+    *,
+    follow_only: bool = False,
 ) -> None:
     """Replace every UID value the policy's own actions did not handle.
 
     Skipped: class and scheme UIDs, registry UIDs, fields the policy names
     itself (it chose keep, remove or replace for those), and values that are
-    already replacements.
+    already replacements. With `follow_only`, a value is replaced only if this
+    run has already regenerated it, so a partial policy never reissues a UID
+    its author chose to keep.
     """
     for tag, holders in index.items():
         keyword = keyword_for_tag(tag)
@@ -330,6 +334,8 @@ def _remap_remaining_uids(
                 if not value
                 or value.startswith(_REGISTRY_UID_PREFIX)
                 or (_NEW_UID_MARK + value) in replacement_cache
+                else replacement_cache.get(f"uid:{value}", value)
+                if follow_only
                 else _new_uid_for(value, replacement_cache)
                 for value in values
             ]
@@ -486,12 +492,17 @@ def apply_policy(
             index = _index_by_tag(dataset)
     # A policy that reissues SOPInstanceUID must also reissue every UID that refers to it,
     # or references would point at files that no longer exist. Fields the policy names
-    # itself keep their own action.
-    if policy.actions.get("SOPInstanceUID", {}).get("action") == "regenerate":
+    # itself keep their own action. A policy that reissues only some UIDs (say the study
+    # and frame of reference) just has its references follow those: a reference to a UID
+    # it keeps stays as it is.
+    # shortcut: a reference to a UID that a later file regenerates keeps its original value,
+    # upgrade if partial policies with cross-series references appear
+    if any(found["action"] == "regenerate" for found in policy.actions.values()):
         explicit = {
             field for field, found in policy.actions.items() if found["action"] != "regenerate"
         }
-        _remap_remaining_uids(index, explicit, replacement_cache)
+        reissues_sop = policy.actions.get("SOPInstanceUID", {}).get("action") == "regenerate"
+        _remap_remaining_uids(index, explicit, replacement_cache, follow_only=not reissues_sop)
     _sync_file_meta_sop_instance_uid(dataset)
 
 
