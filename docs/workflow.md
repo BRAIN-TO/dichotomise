@@ -56,7 +56,8 @@ One command runs the full pipeline, in order:
 6. **sanitise** *(optional, `--sanitise`)*: replaces patient identity
    according to a chosen policy and, for every policy that regenerates `SOPInstanceUID`, remaps every
    remaining instance UID by value, so an image's SOP Instance UID and the references that point at it
-   stay in step; see [Sanitisation](usage.md#sanitisation). When
+   stay in step (a policy that reissues only some UIDs updates the references to those and leaves
+   the rest); see [Sanitisation](usage.md#sanitisation). When
    used, the `review-archive` uses the same policy and replacement identifiers
    as the main archive. Folder names follow the policy: a withheld series
    description leaves just the series number, and a replaced one is used as
