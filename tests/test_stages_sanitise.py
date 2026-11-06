@@ -367,3 +367,36 @@ def test_two_files_that_a_policy_renames_to_one_path_are_refused(
             policy=policy,
             subject_label="sub-1",
         )
+
+
+def test_a_uid_element_stored_after_the_pixel_data_is_still_remapped(
+    tmp_path: Path, make_dicom_file: Callable[..., Path]
+) -> None:
+    """The fill reads past the pixel data (`defer_size`), so a later private UID is not missed."""
+    rectified_dir = tmp_path / "rectify"
+    source = make_dicom_file(
+        rectified_dir / "021-DWI" / "1.dcm",
+        Rows=1,
+        Columns=1,
+        BitsAllocated=8,
+        PixelData=b"\x00\x00",
+    )
+    dataset = pydicom.dcmread(source)
+    dataset.add_new(0x7FE10010, "LO", "PRIVATE")  # written after (7FE0,0010) pixel data
+    dataset.add_new(0x7FE11010, "UI", "1.2.5.5")
+    dataset.save_as(source)
+    policy = load_policy("standard")
+    cache = fill_replacement_cache(
+        [source], policy, subject_label="s", scan_date="", replacement_cache={}
+    )
+
+    result = sanitise(
+        RectifyResult(make_subject(tmp_path), rectified_dir, [read_metadata(source)]),
+        policy=policy,
+        subject_label="sub-1",
+        replacement_cache=cache,
+    )
+
+    written = pydicom.dcmread(result.files[0])
+    assert written[0x7FE11010].value != "1.2.5.5"
+    assert written[0x7FE11010].value == cache["uid:1.2.5.5"]
