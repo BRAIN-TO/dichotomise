@@ -82,3 +82,11 @@ def test_rectified_path_uses_only_the_series_number_when_the_description_is_with
     result = rectified_path(Path("/rectified"), _metadata(), describe_series=False)
 
     assert result.parent == Path("/rectified/021")
+
+
+def test_with_new_sop_instance_uid_leaves_the_series_and_instance_prefix_alone() -> None:
+    path = rectified_path(Path("/r"), _metadata(sop_instance_uid="1", series_number=1))
+
+    renamed = with_new_sop_instance_uid(path, "1", "9")
+
+    assert renamed.name == "001_0005_9_e01.dcm"

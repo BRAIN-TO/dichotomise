@@ -41,4 +41,5 @@ def with_new_sop_instance_uid(path: Path, old_uid: str, new_uid: str) -> Path:
     always matches the header and never exposes the original identifier.
     """
     old, new = safe_filename_text(old_uid), safe_filename_text(new_uid)
-    return path.with_name(path.name.replace(old, new, 1))
+    # Only the UID segment (between underscores, before `_eNN`), never a digit run in the prefix.
+    return path.with_name(path.name.replace(f"_{old}_e", f"_{new}_e", 1))
