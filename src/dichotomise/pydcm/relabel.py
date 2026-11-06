@@ -484,6 +484,8 @@ class FrozenCache(dict[str, str]):
 
 
 # What each pool worker needs and shares across its files; set once per worker by `_set_context`.
+# shortcut: one run per process. A one-by-one run also sets it in the parent, so the callers
+# below clear it afterwards; two runs at once in one process would still share it.
 _context: tuple[Policy, str, str, FrozenCache | None, bool] | None = None
 
 
@@ -492,6 +494,15 @@ def _set_context(
 ) -> None:
     global _context
     _context = (policy, subject_label, scan_date, cache, verify)
+
+
+def _map_with_context(function: Any, items: list[Any], *context: Any) -> list[Any]:
+    """`_parallel_map` with the worker context set, and not left behind in this process."""
+    global _context
+    try:
+        return _parallel_map(function, items, initializer=_set_context, initargs=context)
+    finally:
+        _context = None
 
 
 def _fill_one(path: Path) -> dict[str, str]:
@@ -523,12 +534,7 @@ def fill_replacement_cache(
     """
     if not any(found["action"] in _GENERATING_ACTIONS for found in policy.actions.values()):
         return FrozenCache()  # nothing to generate, so there is nothing to decide in advance
-    parts = _parallel_map(
-        _fill_one,
-        paths,
-        initializer=_set_context,
-        initargs=(policy, subject_label, scan_date, None, False),
-    )
+    parts = _map_with_context(_fill_one, paths, policy, subject_label, scan_date, None, False)
     merged: dict[str, str] = {}
     for part in parts:
         for key, value in part.items():
@@ -570,12 +576,7 @@ def sanitise_many(
     verify: bool,
 ) -> list[tuple[str, tuple[object, ...], str]]:
     """Sanitise (source, target) pairs in order, in a pool for a large subject."""
-    return _parallel_map(
-        _sanitise_one,
-        tasks,
-        initializer=_set_context,
-        initargs=(policy, subject_label, scan_date, cache, verify),
-    )
+    return _map_with_context(_sanitise_one, tasks, policy, subject_label, scan_date, cache, verify)
 
 
 def apply_policy(

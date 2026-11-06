@@ -417,3 +417,14 @@ def test_a_policy_with_nothing_to_generate_needs_no_advance_values() -> None:
         fill_replacement_cache([Path("/missing.dcm")], policy, subject_label="s", scan_date="")
         == {}
     )
+
+
+def test_the_replacement_table_is_not_left_in_memory_after_a_serial_run(
+    tmp_path: Path, make_dicom_file: Callable[..., Path]
+) -> None:
+    source = make_dicom_file(tmp_path / "1.dcm", StudyInstanceUID="1.2.9.1")
+    policy = load_policy("standard")
+
+    fill_replacement_cache([source], policy, subject_label="s", scan_date="")
+
+    assert relabel._context is None
