@@ -72,7 +72,7 @@ installing Python packages directly isn't an option.
 
 ```bash
 # Docker
-docker run --rm -v "$PWD:/data" ghcr.io/srikash/dichotomise:2.9.0 --help
+docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/data" ghcr.io/srikash/dichotomise:2.9.0 --help
 
 # Apptainer / Singularity
 apptainer run oras://ghcr.io/srikash/dichotomise:2.9.0-sif --help
@@ -81,7 +81,7 @@ apptainer run oras://ghcr.io/srikash/dichotomise:2.9.0-sif --help
 Mount your source and output directories under `/data` (the image's working
 directory) so `--source-dir`/`--out-dir` paths resolve inside the container.
 `:latest` tracks the most recent release; pin a version tag for reproducible
-runs.
+runs. `-u` makes the output yours rather than root's on Linux.
 
 [`scripts/dichotomise-container`](../scripts/dichotomise-container) wraps this so
 you don't have to think about image references or mounts: it takes the exact

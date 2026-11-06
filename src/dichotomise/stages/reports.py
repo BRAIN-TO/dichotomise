@@ -131,7 +131,7 @@ def _write(reports_dir: Path, filename: str, data: dict[str, object]) -> Path:
     """Write a JSON report (creating the folder) and return its path."""
     reports_dir.mkdir(parents=True, exist_ok=True)
     report_path = reports_dir / filename
-    report_path.write_text(json.dumps(data, indent=2) + "\n")
+    report_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     return report_path
 
 
@@ -173,7 +173,7 @@ def _write_audit_csv(reports_dir: Path, rows: list[dict[str, object]]) -> Path:
         "status",
         "notes",
     ]
-    with report_path.open("w", newline="") as report_file:
+    with report_path.open("w", newline="", encoding="utf-8") as report_file:
         writer = csv.DictWriter(report_file, fieldnames=fieldnames)
         writer.writeheader()
         for row in rows:
@@ -280,7 +280,7 @@ def _write_manifest_csv(
     on Linux, since Linux exposes no creation time via Python's os.stat.
     """
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    with manifest_path.open("w", newline="") as handle:
+    with manifest_path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(
             handle, fieldnames=["file", "size_bytes", "date_modified", "date_created"]
         )
@@ -506,7 +506,7 @@ def write_source_map(
         (item.metadata.path, f"review:{item.reason}") for item in sift_result.review
     ]
     map_path.parent.mkdir(parents=True, exist_ok=True)
-    with map_path.open("w", newline="") as handle:
+    with map_path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(
             handle, fieldnames=["report_name", "source_file", "size_bytes", "status", "final_file"]
         )

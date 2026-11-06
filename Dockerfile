@@ -17,6 +17,11 @@ RUN uv sync --locked --no-dev
 
 FROM python:3.13-slim
 
+# pigz writes the archives with every core; without it the run falls back to single-threaded gzip.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends pigz \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=builder /app /app
 ENV PATH="/app/.venv/bin:$PATH"
 
