@@ -1063,3 +1063,22 @@ def test_run_pipeline_partial_policy_follows_a_uid_only_a_review_file_regenerate
         review_frame = pydicom.dcmread(tar.extractfile(member)).FrameOfReferenceUID
     assert review_frame != frame
     assert pydicom.dcmread(final_file)[0x00091010].value == review_frame
+
+
+def test_a_failure_while_deciding_replacement_values_fails_the_sanitising_stage(
+    tmp_path: Path, make_dicom_file: Callable[..., Path]
+) -> None:
+    source = tmp_path / "export"
+    make_dicom_file(source / "1.dcm", StudyInstanceUID="1.2.9.1", PatientBirthDate="NOT-A-DATE")
+    events: list[tuple[str, str]] = []
+
+    with pytest.raises(RelabelError):
+        run_pipeline(
+            source,
+            tmp_path / "out",
+            sanitise_requested=True,
+            sanitise_level="standard",
+            on_stage=lambda state, text, _elapsed: events.append((state, text)),
+        )
+
+    assert ("failed", "Study 1: sanitising files") in events

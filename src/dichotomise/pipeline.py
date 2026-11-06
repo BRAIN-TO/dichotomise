@@ -13,6 +13,7 @@ from typing import TypeVar
 from dichotomise.errors import RelabelError
 from dichotomise.pydcm.names import generate_name
 from dichotomise.pydcm.relabel import (
+    FrozenCache,
     Policy,
     fill_replacement_cache,
     load_policy,
@@ -41,7 +42,7 @@ from dichotomise.stages.reports import (
     write_source_manifest,
     write_source_map,
 )
-from dichotomise.stages.sanitise import sanitise, sanitise_review
+from dichotomise.stages.sanitise import SanitiseResult, sanitise, sanitise_review
 from dichotomise.stages.sift import sift
 from dichotomise.stages.source_archive import source_archive
 from dichotomise.utils.archive import Archive
@@ -274,27 +275,30 @@ def _process_subject(
     expected_pixels: dict[Path, tuple[object, ...]] | None = {} if policy is not None else None
     expected_identities: dict[Path, tuple[str, str]] | None = {} if policy is not None else None
     if policy is not None:
-        # Every replacement value is decided, from all retained and review files, before the
-        # first file is written, so files can then be sanitised in any order or in parallel.
-        replacement_cache = fill_replacement_cache(
-            [item.path for item in sift_result.retained]
-            + [item.metadata.path for item in sift_result.review],
-            policy,
-            subject_label=subject_label,
-            scan_date=subject.scan_date,
-            replacement_cache={},
-        )
-        sanitise_result = _run_stage(
-            f"{subject_prefix}: sanitising files",
-            lambda: sanitise(
+
+        def sanitise_retained() -> tuple[FrozenCache, SanitiseResult]:
+            # Every replacement value is decided, from all retained and review files, before the
+            # first file is written, so files can then be sanitised in any order or in parallel.
+            # It runs inside this stage so a failure here is reported as the stage failing.
+            cache = fill_replacement_cache(
+                [item.path for item in sift_result.retained]
+                + [item.metadata.path for item in sift_result.review],
+                policy,
+                subject_label=subject_label,
+                scan_date=subject.scan_date,
+                replacement_cache={},
+            )
+            return cache, sanitise(
                 rectify_result,
                 policy=policy,
                 subject_label=subject_label,
-                replacement_cache=replacement_cache,
+                replacement_cache=cache,
                 expected_pixels=expected_pixels,
                 expected_identities=expected_identities,
-            ),
-            on_stage,
+            )
+
+        replacement_cache, sanitise_result = _run_stage(
+            f"{subject_prefix}: sanitising files", sanitise_retained, on_stage
         )
         sanitise_review_result = _run_stage(
             f"{subject_prefix}: sanitising review files",
