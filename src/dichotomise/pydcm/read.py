@@ -227,6 +227,28 @@ def _worker_count() -> int:
     return max(1, min(available, quota or available, _MAX_WORKERS))
 
 
+def _available_memory() -> int | None:
+    """Bytes of RAM this process may use: the cgroup limit if there is one, else the machine's."""
+    try:
+        limit = Path("/sys/fs/cgroup/memory.max").read_text().strip()
+        if limit.isdigit():
+            return int(limit)
+    except OSError:
+        pass
+    try:
+        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+    except (ValueError, OSError, AttributeError):
+        return None  # shortcut: no cap where the platform cannot say, so memory is not bounded
+
+
+def _workers_for(largest_file: int) -> int:
+    """How many workers fit in half the memory, each holding about twice the largest file."""
+    memory = _available_memory()
+    if memory is None or largest_file <= 0:
+        return _MAX_WORKERS
+    return max(1, memory // 2 // (2 * largest_file))
+
+
 def _read_all(paths: list[Path]) -> list[DicomMetadata | None]:
     """Read every path's metadata, in a pool of processes for a large export."""
     return _parallel_map(_read_or_none, paths, chunksize=_CHUNK_SIZE)
@@ -239,6 +261,7 @@ def _parallel_map(
     chunksize: int = 1,
     initializer: Callable[..., None] | None = None,
     initargs: tuple[Any, ...] = (),
+    largest_file: int = 0,
 ) -> list[Any]:
     """Apply `function` to every item, in order, using a pool of processes when there are many.
 
@@ -249,8 +272,10 @@ def _parallel_map(
     it is the first in input order, exactly as serially. `function` must be a module-level
     function (workers pickle it). `initializer(*initargs)` runs once per worker (and once here
     for the one-by-one path), so shared read-only context is sent once, not with every item.
+    `largest_file` (bytes), when the items are whole files, limits the workers so that they fit in
+    memory; a single worker means the items are mapped one by one.
     """
-    workers = _worker_count()
+    workers = min(_worker_count(), _workers_for(largest_file))
     if len(items) >= _PARALLEL_MIN_FILES and workers >= 2:
         try:
             # forkserver, not fork: the CLI runs this beside a ticker thread.

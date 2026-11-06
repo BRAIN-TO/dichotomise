@@ -129,6 +129,7 @@ def _verify_output_tree(
             )
             for path in found_files
         ],
+        largest_file=max((path.stat().st_size for path in found_files), default=0),
     )
 
 
@@ -265,7 +266,11 @@ def _verify_sanitised_review(
         else:
             identity = None if expected_identities is None else expected_identities[output]
             tasks.append((output, expected_pixels[output], identity))
-    _parallel_map(_verify_review_file, tasks)
+    _parallel_map(
+        _verify_review_file,
+        tasks,
+        largest_file=max((task[0].stat().st_size for task in tasks), default=0),
+    )
 
 
 def finalise_review(

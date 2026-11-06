@@ -188,3 +188,23 @@ def test_parallel_map_keeps_input_order_and_falls_back_when_no_pool_can_start(
 )
 def test_cpu_limit_from_a_cgroup_quota(text: str, expected: int | None) -> None:
     assert read_module._cpu_limit_from_cgroup(text) == expected
+
+
+def test_workers_are_limited_so_that_they_fit_in_half_the_memory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(read_module, "_available_memory", lambda: 16 * 1024**3)
+
+    assert read_module._workers_for(1024**3) == 4  # 8 GiB / (2 x 1 GiB)
+    assert read_module._workers_for(10 * 1024**3) == 1
+    assert read_module._workers_for(0) == read_module._MAX_WORKERS
+
+
+def test_one_file_too_big_for_two_workers_is_mapped_without_a_pool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started = force_pool(monkeypatch)
+    monkeypatch.setattr(read_module, "_available_memory", lambda: 1024)
+
+    assert read_module._parallel_map(_double, [1, 2, 3], largest_file=4096) == [2, 4, 6]
+    assert started == []

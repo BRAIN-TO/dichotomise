@@ -496,11 +496,15 @@ def _set_context(
     _context = (policy, subject_label, scan_date, cache, verify)
 
 
-def _map_with_context(function: Any, items: list[Any], *context: Any) -> list[Any]:
+def _map_with_context(
+    function: Any, items: list[Any], *context: Any, largest_file: int = 0
+) -> list[Any]:
     """`_parallel_map` with the worker context set, and not left behind in this process."""
     global _context
     try:
-        return _parallel_map(function, items, initializer=_set_context, initargs=context)
+        return _parallel_map(
+            function, items, initializer=_set_context, initargs=context, largest_file=largest_file
+        )
     finally:
         _context = None
 
@@ -576,7 +580,17 @@ def sanitise_many(
     verify: bool,
 ) -> list[tuple[str, tuple[object, ...], str]]:
     """Sanitise (source, target) pairs in order, in a pool for a large subject."""
-    return _map_with_context(_sanitise_one, tasks, policy, subject_label, scan_date, cache, verify)
+    largest = max((source.stat().st_size for source, _ in tasks), default=0)
+    return _map_with_context(
+        _sanitise_one,
+        tasks,
+        policy,
+        subject_label,
+        scan_date,
+        cache,
+        verify,
+        largest_file=largest,
+    )
 
 
 def apply_policy(
