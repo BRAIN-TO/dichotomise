@@ -14,7 +14,7 @@ from helpers import force_pool, make_subject
 from dichotomise.errors import FinaliseVerificationError
 from dichotomise.pydcm.read import _pixel_fingerprint, read_metadata
 from dichotomise.run import start_run
-from dichotomise.stages.finalise import finalise, finalise_review
+from dichotomise.stages.finalise import _verify_review_file, finalise, finalise_review
 from dichotomise.stages.rectify import RectifyResult, RectifyReviewResult, rectify, rectify_review
 from dichotomise.stages.sanitise import SanitiseResult, SanitiseReviewResult
 from dichotomise.stages.sift import ReviewFile, SiftResult
@@ -329,3 +329,11 @@ def test_finalise_checks_recorded_fingerprints_in_a_pool(
         finalise(rectified, start_run(tmp_path / "out"), **arguments)
 
     assert pools
+
+
+def test_an_unreadable_sanitised_review_file_is_a_verification_error(tmp_path: Path) -> None:
+    broken = tmp_path / "1.dcm"
+    broken.write_bytes(b"not a dicom file")
+
+    with pytest.raises(FinaliseVerificationError, match="could not be read back"):
+        _verify_review_file((broken, (), None))

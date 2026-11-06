@@ -224,7 +224,12 @@ def finalise(
 def _verify_review_file(task: tuple[Path, tuple[object, ...], tuple[str, str] | None]) -> None:
     """Check one sanitised review file against its recorded fingerprint and identity (pool-safe)."""
     output, expected_pixels, expected_identity = task
-    dataset = pydicom.dcmread(output)
+    try:
+        dataset = pydicom.dcmread(output)
+    except (InvalidDicomError, OSError) as error:
+        raise FinaliseVerificationError(
+            f"{output} could not be read back after processing; the finished output may be corrupt"
+        ) from error
     if _pixel_fingerprint(dataset) != expected_pixels:
         raise FinaliseVerificationError(f"Pixel data differs from its source: {output}")
     if expected_identity is not None:
