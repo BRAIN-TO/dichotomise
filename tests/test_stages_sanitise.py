@@ -254,7 +254,10 @@ def test_fill_merges_workers_in_file_order_and_rebuilds_the_reverse_uid_entries(
     monkeypatch.setattr(relabel, "_parallel_map", lambda *_a, **_k: [first, second])
 
     cache = fill_replacement_cache(
-        [], load_policy("standard"), subject_label="s", scan_date="", replacement_cache={}
+        [],
+        load_policy("standard"),
+        subject_label="s",
+        scan_date="",
     )
 
     assert cache["uid:1.1"] == "9.1"
@@ -293,7 +296,10 @@ def test_a_frozen_cache_lets_a_follow_only_reference_to_a_kept_uid_pass(
     dataset.save_as(source)
     policy = Policy(name="p", actions={"FrameOfReferenceUID": {"action": "regenerate"}})
     cache = fill_replacement_cache(
-        [source], policy, subject_label="s", scan_date="", replacement_cache={}
+        [source],
+        policy,
+        subject_label="s",
+        scan_date="",
     )
 
     result = sanitise(
@@ -333,7 +339,6 @@ def test_a_pool_sanitises_like_one_process(
         load_policy("standard"),
         subject_label="sub-1",
         scan_date="",
-        replacement_cache={},
     )
     result = sanitise(
         rectify_result,
@@ -387,7 +392,10 @@ def test_a_uid_element_stored_after_the_pixel_data_is_still_remapped(
     dataset.save_as(source)
     policy = load_policy("standard")
     cache = fill_replacement_cache(
-        [source], policy, subject_label="s", scan_date="", replacement_cache={}
+        [source],
+        policy,
+        subject_label="s",
+        scan_date="",
     )
 
     result = sanitise(

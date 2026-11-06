@@ -286,7 +286,6 @@ def _process_subject(
                 policy,
                 subject_label=subject_label,
                 scan_date=subject.scan_date,
-                replacement_cache={},
             )
             return cache, sanitise(
                 rectify_result,

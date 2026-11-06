@@ -512,7 +512,6 @@ def fill_replacement_cache(
     *,
     subject_label: str,
     scan_date: str,
-    replacement_cache: dict[str, str],
 ) -> FrozenCache:
     """Decide every replacement value for `paths` before any file is written; return them frozen.
 
@@ -527,14 +526,15 @@ def fill_replacement_cache(
         initializer=_set_context,
         initargs=(policy, subject_label, scan_date, None, False),
     )
+    merged: dict[str, str] = {}
     for part in parts:
         for key, value in part.items():
             if not key.startswith(_NEW_UID_MARK):
-                replacement_cache.setdefault(key, value)
-    for key, value in list(replacement_cache.items()):
+                merged.setdefault(key, value)
+    for key, value in list(merged.items()):
         if key.startswith("uid:"):
-            replacement_cache[_NEW_UID_MARK + value] = key[len("uid:") :]
-    return FrozenCache(replacement_cache)
+            merged[_NEW_UID_MARK + value] = key[len("uid:") :]
+    return FrozenCache(merged)
 
 
 def _sanitise_one(task: tuple[Path, Path]) -> tuple[str, tuple[object, ...], str]:
