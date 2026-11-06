@@ -614,3 +614,9 @@ def test_cli_sort_rejects_options_that_do_not_belong_with_it(
 
     assert result.exit_code != 0
     assert message in unstyle(result.output)
+
+
+def test_cli_inline_mappings_ignore_spaces_around_the_pairs() -> None:
+    from dichotomise.cli import _parse_inline_mappings
+
+    assert _parse_inline_mappings(("a:sub-1, b : sub-2",)) == {"a": "sub-1", "b": "sub-2"}

@@ -420,7 +420,7 @@ def _parse_inline_mappings(entries: tuple[str, ...]) -> dict[str, str]:
     mapping: dict[str, str] = {}
     for entry in entries:
         for pair in entry.split(","):
-            source_id, separator, replacement_id = pair.partition(":")
+            source_id, separator, replacement_id = (part.strip() for part in pair.partition(":"))
             if not separator:
                 raise click.UsageError(
                     "Each --mapping value must be written as patient_id:replacement_id."
