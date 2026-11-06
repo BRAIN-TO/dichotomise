@@ -43,10 +43,6 @@ class NamingCollisionError(DichotomiseError):
     """Raised when two different scan files would end up with the same rectified name."""
 
 
-class ArchiveVerificationError(DichotomiseError):
-    """Raised when an archive does not match its checksum immediately after creation."""
-
-
 class ArchiveCreationError(DichotomiseError):
     """Raised when the external `pigz` process fails while an archive is being written."""
 

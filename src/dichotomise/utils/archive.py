@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
 
-from dichotomise.errors import ArchiveCreationError, ArchiveVerificationError
+from dichotomise.errors import ArchiveCreationError
 from dichotomise.utils import fs
 
 ProgressCallback = Callable[[int, int], None]
@@ -62,13 +62,15 @@ def _checksum_path_for(archive_path: Path) -> Path:
 
 
 def _finish_archive(archive_path: Path) -> Archive:
-    """Write the checksum sidecar and verify the archive before returning it."""
+    """Write the checksum sidecar for a finished archive.
+
+    No re-check follows: hashing the file again straight after only proves it did not change
+    between two reads, and costs a full extra read of every archive. `verify_archive` checks
+    an archive later, against its sidecar.
+    """
     checksum_path = _checksum_path_for(archive_path)
     checksum_path.write_text(fs.file_digest(archive_path) + "\n")
-    archive = Archive(path=archive_path, checksum_path=checksum_path)
-    if not verify_archive(archive.path, archive.checksum_path):
-        raise ArchiveVerificationError(f"Archive verification failed: {archive.path}")
-    return archive
+    return Archive(path=archive_path, checksum_path=checksum_path)
 
 
 def make_tarball(

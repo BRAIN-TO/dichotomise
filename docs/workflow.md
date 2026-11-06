@@ -81,7 +81,7 @@ expert/stage-by-stage command.
 ```mermaid
 flowchart TD
     SOURCE["Raw scanner export<br/>(one folder, or sorted into subfolders)"] --> CAPTURE["capture<br/>Groups DICOM by subject from the headers, in place"]
-    CAPTURE --> ARCHIVE["source_archive<br/>Per-study verified tarball + checksum (archives/), straight from the source files"]
+    CAPTURE --> ARCHIVE["source_archive<br/>Per-study tarball + checksum (archives/), straight from the source files"]
     ARCHIVE --> AUDIT["audit<br/>Series found from the headers; byte-for-byte duplicates, SOP-UID conflicts, misfiled files and metadata QA per subject"]
     AUDIT --> REPORT1["stage-01-report.json<br/>stage-01-audit.csv<br/>source-manifest.csv"]
     AUDIT --> SIFT["sift<br/>Splits retained vs review, logically"]
