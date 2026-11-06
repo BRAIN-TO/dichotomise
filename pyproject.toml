@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dichotomise"
-version = "2.8.0"
+version = "2.9.0"
 description = "Audit, sort, rectify, and archive DICOM exports from Siemens XA60+ systems."
 readme = "README.md"
 requires-python = ">=3.11"

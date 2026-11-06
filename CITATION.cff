@@ -11,8 +11,8 @@ authors:
 repository-code: https://github.com/srikash/dichotomise
 url: https://github.com/srikash/dichotomise
 license: MIT
-version: 2.8.0
-date-released: 2026-10-21
+version: 2.9.0
+date-released: 2026-11-05
 identifiers:
   - type: doi
     value: 10.5281/zenodo.23166271

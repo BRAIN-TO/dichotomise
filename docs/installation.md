@@ -72,10 +72,10 @@ installing Python packages directly isn't an option.
 
 ```bash
 # Docker
-docker run --rm -v "$PWD:/data" ghcr.io/srikash/dichotomise:2.8.0 --help
+docker run --rm -v "$PWD:/data" ghcr.io/srikash/dichotomise:2.9.0 --help
 
 # Apptainer / Singularity
-apptainer run oras://ghcr.io/srikash/dichotomise:2.8.0-sif --help
+apptainer run oras://ghcr.io/srikash/dichotomise:2.9.0-sif --help
 ```
 
 Mount your source and output directories under `/data` (the image's working
@@ -95,6 +95,6 @@ since it delegates straight into the containerised CLI), auto-detects
 ```
 
 Set `DICHOTOMISE_ENGINE=docker|apptainer` to force an engine, and
-`DICHOTOMISE_VERSION=2.8.0` (default `latest`) to pin a release.
+`DICHOTOMISE_VERSION=2.9.0` (default `latest`) to pin a release.
 
 [Back to the README](../README.md)

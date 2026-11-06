@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v2.9.0
 
 Integrity and provenance checks, plus speed-ups. Sanitised and archived output is unchanged for inputs that
 pass the checks; inputs that fail one now stop the run instead of being processed.

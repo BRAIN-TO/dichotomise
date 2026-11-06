@@ -1,4 +1,4 @@
-# dichotomise [![Version](https://img.shields.io/badge/version-2.8.0-purple.svg)](https://github.com/srikash/dichotomise/releases) [![Licence](https://img.shields.io/badge/licence-MIT-orange.svg)](LICENCE) [![CI](https://github.com/srikash/dichotomise/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/srikash/dichotomise/actions/workflows/ci.yml) [![DOI](https://zenodo.org/badge/1397808016.svg)](https://doi.org/10.5281/zenodo.23166271)
+# dichotomise [![Version](https://img.shields.io/badge/version-2.9.0-purple.svg)](https://github.com/srikash/dichotomise/releases) [![Licence](https://img.shields.io/badge/licence-MIT-orange.svg)](LICENCE) [![CI](https://github.com/srikash/dichotomise/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/srikash/dichotomise/actions/workflows/ci.yml) [![DOI](https://zenodo.org/badge/1397808016.svg)](https://doi.org/10.5281/zenodo.23166271)
 
 <b><ins>DIC</ins></b>h<b><ins>O</ins></b>to<b><ins>M</ins></b>ise checks, sorts, renames,
 optionally sanitises and archives DICOM exports. It was prompted by problems
