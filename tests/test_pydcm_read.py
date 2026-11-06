@@ -13,8 +13,8 @@ from dichotomise.errors import NotDicomError
 from dichotomise.pydcm import read as read_module
 from dichotomise.pydcm.read import (
     _optional_number,
-    _pixel_fingerprint,
     iter_dicom_metadata,
+    pixel_fingerprint,
     read_metadata,
 )
 
@@ -23,17 +23,17 @@ from dichotomise.pydcm.read import (
 def test_pixel_fingerprint_detects_same_length_changes(field: str) -> None:
     dataset = pydicom.Dataset()
     setattr(dataset, field, b"\x01\x02\x03\x04")
-    original = _pixel_fingerprint(dataset)
+    original = pixel_fingerprint(dataset)
     setattr(dataset, field, b"\x01\x02\x03\x05")
-    assert _pixel_fingerprint(dataset) != original
+    assert pixel_fingerprint(dataset) != original
 
 
 def test_pixel_fingerprint_tracks_interpretation_fields() -> None:
     dataset = pydicom.Dataset()
     dataset.Rows = 2
-    original = _pixel_fingerprint(dataset)
+    original = pixel_fingerprint(dataset)
     dataset.Rows = 3
-    assert _pixel_fingerprint(dataset) != original
+    assert pixel_fingerprint(dataset) != original
 
 
 def test_read_metadata_extracts_expected_fields(

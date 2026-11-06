@@ -12,7 +12,7 @@ import pytest
 from helpers import force_pool, make_subject
 
 from dichotomise.errors import FinaliseVerificationError
-from dichotomise.pydcm.read import _pixel_fingerprint, read_metadata
+from dichotomise.pydcm.read import pixel_fingerprint, read_metadata
 from dichotomise.run import start_run
 from dichotomise.stages.finalise import _verify_review_file, finalise, finalise_review
 from dichotomise.stages.rectify import RectifyResult, RectifyReviewResult, rectify, rectify_review
@@ -304,7 +304,7 @@ def test_finalise_checks_recorded_fingerprints_in_a_pool(
     sanitised_dir = tmp_path / "sanitise"
     files = [make_dicom_file(sanitised_dir / f"{n}.dcm", InstanceNumber=n) for n in range(1, 5)]
     datasets = {path: pydicom.dcmread(path) for path in files}
-    pixels = {path: _pixel_fingerprint(dataset) for path, dataset in datasets.items()}
+    pixels = {path: pixel_fingerprint(dataset) for path, dataset in datasets.items()}
     identities = {
         path: (str(dataset.PatientID), str(dataset.SOPInstanceUID))
         for path, dataset in datasets.items()

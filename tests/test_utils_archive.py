@@ -41,7 +41,7 @@ def test_make_tarball_reports_progress_once_per_file_up_to_the_total(tmp_path: P
 def test_source_digests_match_archived_file_contents(tmp_path: Path) -> None:
     source = _make_source(tmp_path) / "series-a" / "1.dcm"
     digests: dict[Path, str] = {}
-    archive = archive_module._write_tarball(
+    archive = archive_module.write_tarball(
         [(source, Path("1.dcm"))], tmp_path / "archive.tar.gz", None, digests
     )
     with tarfile.open(archive.path) as tar:

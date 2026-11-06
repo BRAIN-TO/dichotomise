@@ -10,7 +10,7 @@ from pydicom.errors import InvalidDicomError
 
 from dichotomise.errors import FinaliseVerificationError
 from dichotomise.pydcm.identify import file_digest
-from dichotomise.pydcm.read import _metadata_from_dataset, _parallel_map, _pixel_fingerprint
+from dichotomise.pydcm.read import _parallel_map, metadata_from_dataset, pixel_fingerprint
 from dichotomise.run import Run
 from dichotomise.stages.capture import CapturedSubject
 from dichotomise.stages.rectify import (
@@ -83,13 +83,13 @@ def _verify_file(
     path, expected_pixels, expected_identity, expected_digest = task
     try:
         dataset = pydicom.dcmread(path, force=False)
-        _metadata_from_dataset(dataset, path)
+        metadata_from_dataset(dataset, path)
     except (InvalidDicomError, OSError) as error:
         raise FinaliseVerificationError(
             f"{path} could not be read back after processing; the finished output may be corrupt"
         ) from error
     _verify_uncompressed_pixel_data(path, dataset)
-    if expected_pixels is not None and _pixel_fingerprint(dataset) != expected_pixels:
+    if expected_pixels is not None and pixel_fingerprint(dataset) != expected_pixels:
         raise FinaliseVerificationError(f"Pixel data differs from its source: {path}")
     if expected_identity is not None:
         _verify_identity(dataset, path, expected_identity)
@@ -152,7 +152,7 @@ def _verify_pixel_data(source: Path, output: Path) -> None:
     """Check that an output file's pixels and their interpretation match its source file."""
     original_dataset = pydicom.dcmread(source)
     finished = pydicom.dcmread(output)
-    if _pixel_fingerprint(original_dataset) != _pixel_fingerprint(finished):
+    if pixel_fingerprint(original_dataset) != pixel_fingerprint(finished):
         raise FinaliseVerificationError(f"Pixel data differs from its source: {output}")
 
 
@@ -236,7 +236,7 @@ def _verify_review_file(task: tuple[Path, tuple[object, ...], tuple[str, str] | 
         raise FinaliseVerificationError(
             f"{output} could not be read back after processing; the finished output may be corrupt"
         ) from error
-    if _pixel_fingerprint(dataset) != expected_pixels:
+    if pixel_fingerprint(dataset) != expected_pixels:
         raise FinaliseVerificationError(f"Pixel data differs from its source: {output}")
     if expected_identity is not None:
         _verify_identity(dataset, output, expected_identity)

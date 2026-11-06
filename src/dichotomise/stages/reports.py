@@ -21,7 +21,7 @@ from dichotomise.pydcm.read import DicomMetadata
 from dichotomise.stages.audit import (
     AuditedFile,
     AuditResult,
-    _folder_summaries,
+    folder_summaries,
 )
 from dichotomise.stages.capture import CapturedSubject
 from dichotomise.stages.finalise import FinaliseResult
@@ -138,7 +138,7 @@ def _write(reports_dir: Path, filename: str, data: dict[str, object]) -> Path:
 def _audit_series_rows(audit_result: AuditResult) -> list[dict[str, object]]:
     """Summarise structural and metadata findings for each physical DICOM folder."""
     rows: list[dict[str, object]] = []
-    for summary in _folder_summaries(audit_result):
+    for summary in folder_summaries(audit_result):
         rows.append(
             {
                 "series_folder": summary.folder.name,

@@ -21,8 +21,8 @@ from dichotomise.pydcm.relabel import (
     validate_label,
 )
 from dichotomise.run import Run, start_run
-from dichotomise.stages.audit import AuditResult, _audit_files
-from dichotomise.stages.capture import CapturedSubject, Fingerprint, _check_sources, capture
+from dichotomise.stages.audit import AuditResult, audit
+from dichotomise.stages.capture import CapturedSubject, Fingerprint, capture, check_sources
 from dichotomise.stages.finalise import finalise, finalise_review
 from dichotomise.stages.rectify import (
     plan_rectify,
@@ -165,10 +165,10 @@ def _archive_source_subject(
         if on_archive_progress is not None
         else None
     )
-    _check_sources(fingerprints)  # nothing may have changed since capture read the headers
+    check_sources(fingerprints)  # nothing may have changed since capture read the headers
     digests: dict[Path, str] = {}
     archive = source_archive(subject, run, on_progress=on_progress, source_digests=digests)
-    _check_sources(fingerprints)
+    check_sources(fingerprints)
     return archive, digests
 
 
@@ -224,10 +224,10 @@ def _process_subject(
         return lambda done, total: on_archive_progress(description, done, total)
 
     subject_prefix = f"Study {subject.output_number}"
-    _check_sources(source_fingerprints)
+    check_sources(source_fingerprints)
     audit_result = _run_stage(
         f"{subject_prefix}: auditing",
-        lambda: _audit_files(subject.files, subject, source_digests),
+        lambda: audit(subject, source_digests),
         on_stage,
     )
     if on_audit is not None:
@@ -249,7 +249,7 @@ def _process_subject(
     if names:
         write_source_map(source_map_path, sift_result, names)
 
-    _check_sources(source_fingerprints)
+    check_sources(source_fingerprints)
     direct = sanitise_requested and not keep_working_files
     rectify_result = _run_stage(
         f"{subject_prefix}: rectifying retained files",
@@ -340,7 +340,7 @@ def _process_subject(
     )
 
     finalise_description = f"{subject_prefix}: creating verified archive"
-    _check_sources(source_fingerprints)
+    check_sources(source_fingerprints)
     finalise_result = _run_stage(
         finalise_description,
         lambda: finalise(

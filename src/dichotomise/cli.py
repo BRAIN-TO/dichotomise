@@ -31,10 +31,10 @@ from dichotomise.run import Run
 from dichotomise.stages.audit import (
     AuditedFile,
     AuditResult,
-    _folder_summaries,
     _FolderSummary,
     audit_directory,
     folder_notes,
+    folder_summaries,
 )
 from dichotomise.stages.sort import SortPlan, apply_sort, plan_sort
 from dichotomise.utils.archive import pigz_path
@@ -328,7 +328,7 @@ def _print_audit_table(audit_result: AuditResult) -> None:
     table.add_column("Modified")
     table.add_column("Check")
     table.add_column("Why", overflow="fold")
-    for summary in _folder_summaries(audit_result):
+    for summary in folder_summaries(audit_result):
         reasons = _audit_reasons(summary)
         table.add_row(
             summary.folder.name,

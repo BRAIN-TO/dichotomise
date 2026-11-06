@@ -47,7 +47,7 @@ class DicomMetadata:
     is_asl: bool = False
 
 
-def _pixel_fingerprint(dataset: pydicom.Dataset) -> tuple[object, ...]:
+def pixel_fingerprint(dataset: pydicom.Dataset) -> tuple[object, ...]:
     """Summarise a file's pixel data and the fields that say how to read it.
 
     Two datasets with equal fingerprints decode to the same image. Used to prove that
@@ -147,10 +147,10 @@ def read_metadata(path: Path) -> DicomMetadata:
     except (InvalidDicomError, OSError) as error:
         raise NotDicomError(f"{path} is not a readable DICOM file") from error
 
-    return _metadata_from_dataset(dataset, path)
+    return metadata_from_dataset(dataset, path)
 
 
-def _metadata_from_dataset(dataset: pydicom.Dataset, path: Path) -> DicomMetadata:
+def metadata_from_dataset(dataset: pydicom.Dataset, path: Path) -> DicomMetadata:
     """Build `DicomMetadata` from an open dataset; echo and ASL values may be per-frame."""
     echo_number = dataset.get("EchoNumbers")
     echo_time = dataset.get("EchoTime")

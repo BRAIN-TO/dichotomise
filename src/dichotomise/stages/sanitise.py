@@ -12,10 +12,10 @@ from dichotomise.pydcm.read import DicomMetadata
 from dichotomise.pydcm.relabel import (
     FrozenCache,
     Policy,
-    _apply_action,
-    _sanitise_file,
+    apply_action,
     format_subject_name,
     sanitise_many,
+    write_sanitised_file,
 )
 from dichotomise.stages.capture import CapturedSubject
 from dichotomise.stages.rectify import (
@@ -56,7 +56,7 @@ def _policy_path(
         return target
     dataset = pydicom.Dataset()
     dataset.SeriesDescription = description
-    _apply_action(
+    apply_action(
         dataset,
         "SeriesDescription",
         instruction,
@@ -229,7 +229,7 @@ def _sanitise_files(
         )
     else:  # a direct call with a live cache: values are generated as the files go by
         results = [
-            _sanitise_file(
+            write_sanitised_file(
                 source,
                 target,
                 policy,

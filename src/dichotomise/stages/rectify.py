@@ -80,7 +80,7 @@ def plan_rectify(
     )
 
 
-def _copy_planned(sources: dict[Path, Path], digests: dict[Path, str]) -> None:
+def copy_planned(sources: dict[Path, Path], digests: dict[Path, str]) -> None:
     """Copy each planned file and check the copy matches its source."""
     for target, source in sources.items():
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -110,7 +110,7 @@ def rectify(
     them; finalise reads them back from `target_by_source`.
     """
     plan = plan_rectify(sift_result, digests, describe_series=describe_series)
-    _copy_planned(plan.sources, digests)
+    copy_planned(plan.sources, digests)
     return RectifyResult(
         plan.subject,
         plan.rectified_dir,
@@ -198,7 +198,7 @@ def rectify_review(
     `rectify()` takes.
     """
     plan = plan_rectify_review(sift_result, digests, describe_series=describe_series)
-    _copy_planned(plan.sources, digests)
+    copy_planned(plan.sources, digests)
     return RectifyReviewResult(
         plan.review_rectified_dir,
         plan.files,

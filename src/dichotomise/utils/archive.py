@@ -85,7 +85,7 @@ def make_tarball(
     a whole file in one call.
     """
     items = sorted(source_dir.rglob("*"))
-    return _write_tarball(
+    return write_tarball(
         ((item, item.relative_to(source_dir)) for item in items), archive_path, on_progress
     )
 
@@ -181,7 +181,7 @@ def _write_tarball_with_pigz(
             )
 
 
-def _write_tarball(
+def write_tarball(
     entries: Iterable[tuple[Path, Path]],
     archive_path: Path,
     on_progress: ProgressCallback | None,

@@ -11,8 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from dichotomise.errors import DestinationExistsError, NamingCollisionError, SortError
-from dichotomise.stages.capture import Fingerprint, _check_sources, capture
-from dichotomise.stages.rectify import _copy_planned, plan_rectify
+from dichotomise.stages.capture import Fingerprint, capture, check_sources
+from dichotomise.stages.rectify import copy_planned, plan_rectify
 from dichotomise.stages.sift import SiftResult
 
 
@@ -82,12 +82,12 @@ def plan_sort(source_dir: Path, out_dir: Path | None = None) -> SortPlan:
 
 def apply_sort(plan: SortPlan) -> SortResult:
     """Carry out a plan: move the files (or copy them, checking each copy), then confirm."""
-    _check_sources({source: plan.fingerprints[source] for source, _ in plan.moves})
+    check_sources({source: plan.fingerprints[source] for source, _ in plan.moves})
     for source, target in plan.moves:
         if target.exists():  # rename would silently replace it
             raise DestinationExistsError(f"Sorting would overwrite an existing file: {target}")
         if plan.copy:
-            _copy_planned({target: source}, {})
+            copy_planned({target: source}, {})
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
         source.rename(target)

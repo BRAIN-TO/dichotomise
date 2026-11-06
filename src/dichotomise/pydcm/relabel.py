@@ -20,7 +20,7 @@ from pydicom.uid import generate_uid
 
 from dichotomise.errors import PolicyNotFoundError, PolicyValidationError, RelabelError
 from dichotomise.pydcm.names import generate_name
-from dichotomise.pydcm.read import _parallel_map, _pixel_fingerprint
+from dichotomise.pydcm.read import _parallel_map, pixel_fingerprint
 
 _POLICIES_DIR = Path(__file__).parent / "policies"
 
@@ -416,7 +416,7 @@ def _random_name_field(
         setattr(dataset, field, new_value)
 
 
-def _apply_action(
+def apply_action(
     dataset: Dataset,
     field: str,
     instruction: dict[str, Any],
@@ -553,7 +553,7 @@ def _sanitise_one(task: tuple[Path, Path]) -> tuple[str, tuple[object, ...], str
     assert cache is not None
     source, target = task
     try:
-        return _sanitise_file(
+        return write_sanitised_file(
             source,
             target,
             policy,
@@ -615,7 +615,7 @@ def apply_policy(
                 if current is not dataset and tag in current
             ]
         for current_dataset in targets:
-            _apply_action(
+            apply_action(
                 current_dataset,
                 field,
                 instruction,
@@ -656,7 +656,7 @@ def sanitise_file(
     function owns all DICOM-specific file handling. Returns the saved file's
     SOP Instance UID, which the policy may have regenerated.
     """
-    uid, _, _ = _sanitise_file(
+    uid, _, _ = write_sanitised_file(
         source_path,
         target_path,
         policy,
@@ -668,7 +668,7 @@ def sanitise_file(
     return uid
 
 
-def _sanitise_file(
+def write_sanitised_file(
     source_path: Path,
     target_path: Path,
     policy: Policy,
@@ -684,7 +684,7 @@ def _sanitise_file(
     PatientID written. With `verify`, the saved file must match: pixels, PatientID and SOP UID.
     """
     dataset = pydicom.dcmread(source_path)
-    fingerprint = _pixel_fingerprint(dataset)
+    fingerprint = pixel_fingerprint(dataset)
     apply_policy(
         dataset,
         policy,
@@ -695,7 +695,7 @@ def _sanitise_file(
     dataset.save_as(target_path)
     if verify:
         saved = pydicom.dcmread(target_path)
-        if _pixel_fingerprint(saved) != fingerprint:
+        if pixel_fingerprint(saved) != fingerprint:
             raise RelabelError(f"Pixel data differs after sanitisation: {target_path}")
         for field in ("PatientID", "SOPInstanceUID"):
             if str(saved.get(field, "")) != str(dataset.get(field, "")):

@@ -71,22 +71,6 @@ def metadata_inconsistencies(files: Sequence[AuditedFile]) -> list[str]:
     ]
 
 
-def audit(subject: CapturedSubject) -> AuditResult:
-    """Check a captured subject's files for duplicates, UID conflicts and misfiled files.
-
-    Runs against `subject.files` as capture() found them in place. No
-    directory is re-scanned here.
-
-    Misfiled and duplicate checks are computed per physical folder: a
-    folder's own files decide, by majority, what series that folder is
-    supposed to contain (see pydcm.identify.find_misfiled_files), and
-    duplicates (byte-for-byte copies) are only looked for between files that
-    already sit in the same folder. SOP Instance UID conflicts are checked
-    across the whole subject.
-    """
-    return _audit_files(subject.files, subject)
-
-
 def audit_directory(directory: Path) -> list[AuditResult]:
     """Audit DICOMs in place, one result per subject, without creating a run or copying files."""
     files_by_subject = group_by_subject(iter_dicom_metadata(directory))
@@ -100,7 +84,7 @@ def audit_directory(directory: Path) -> list[AuditResult]:
             working_dir=directory,  # unused: QC mode never writes, so there's nothing to anchor
             output_number=output_number,
         )
-        results.append(_audit_files(subject_files, subject))
+        results.append(audit(subject))
     return results
 
 
@@ -162,10 +146,16 @@ def _series_folders(files_by_folder: Mapping[Path, Sequence[DicomMetadata]]) -> 
     return series_folder
 
 
-def _audit_files(
-    files: Sequence[DicomMetadata], subject: CapturedSubject, digests: dict[Path, str] | None = None
-) -> AuditResult:
-    """Compute audit findings for a subject's DICOM files, wherever they sit on disk."""
+def audit(subject: CapturedSubject, digests: dict[Path, str] | None = None) -> AuditResult:
+    """Check a subject's DICOM files for duplicates, UID conflicts and misfiled files.
+
+    Misfiled and duplicate checks are computed per physical folder: a folder's own files decide,
+    by majority, what series that folder is supposed to contain (see
+    pydcm.identify.find_misfiled_files), and duplicates (byte-for-byte copies) are only looked
+    for between files that already sit in the same folder. SOP Instance UID conflicts are checked
+    across the whole subject. `digests` is an optional cache of file SHA-256 digests.
+    """
+    files = subject.files
     files_by_folder: dict[Path, list[Path]] = defaultdict(list)
     metadata_by_folder: dict[Path, list[DicomMetadata]] = defaultdict(list)
     metadata_by_path: dict[Path, DicomMetadata] = {}
@@ -457,7 +447,7 @@ class _FolderSummary:
     notes: list[str]
 
 
-def _folder_summaries(audit_result: AuditResult) -> list[_FolderSummary]:
+def folder_summaries(audit_result: AuditResult) -> list[_FolderSummary]:
     """Summarise each folder's findings, in natural folder order (`2` before `10`)."""
     files_by_folder: dict[Path, list[AuditedFile]] = defaultdict(list)
     for file in audit_result.files:
@@ -486,7 +476,7 @@ def folder_notes(audit_result: AuditResult) -> list[FolderNote]:
     """Notes for every folder that has any, imaging series first, PR/SR folders last."""
     result = [
         FolderNote(summary.folder.name, summary.notes, summary.low_priority)
-        for summary in _folder_summaries(audit_result)
+        for summary in folder_summaries(audit_result)
         if summary.notes
     ]
     return sorted(result, key=lambda note: note.low_priority)

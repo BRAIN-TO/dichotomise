@@ -94,7 +94,7 @@ def _fingerprints(paths: list[Path]) -> dict[Path, Fingerprint]:
         raise UnsafeSourceError(f"Source is no longer accessible: {error.filename}") from error
 
 
-def _check_sources(fingerprints: dict[Path, Fingerprint]) -> None:
+def check_sources(fingerprints: dict[Path, Fingerprint]) -> None:
     """Stop the run if any source file changed since it was archived."""
     for path, expected in fingerprints.items():
         try:
