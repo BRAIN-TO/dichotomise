@@ -198,6 +198,7 @@ def _sanitise_files(
     """
     # Names are decided here, in order, before any file is written.
     targets: list[Path] = []
+    seen: set[Path] = set()
     for metadata in metadata_files:
         target = _policy_path(
             target_dir / metadata.path.relative_to(source_dir),
@@ -207,10 +208,11 @@ def _sanitise_files(
             scan_date,
             replacement_cache,
         )
-        if target.exists() or target in targets:
+        if target.exists() or target in seen:
             raise FileExistsError(f"Sanitised output already exists: {target}")
         target.parent.mkdir(parents=True, exist_ok=True)
         targets.append(target)
+        seen.add(target)
     tasks = [
         (sources.get(metadata.path, metadata.path), target)
         for metadata, target in zip(metadata_files, targets, strict=True)

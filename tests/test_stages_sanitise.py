@@ -348,3 +348,22 @@ def test_a_pool_sanitises_like_one_process(
     assert {d.FrameOfReferenceUID for d in written} == {cache["uid:1.2.7"]}
     assert len({d.SOPInstanceUID for d in written}) == 4
     assert all(d.PatientID == "sub-1" for d in written)
+
+
+def test_two_files_that_a_policy_renames_to_one_path_are_refused(
+    tmp_path: Path, make_dicom_file: Callable[..., Path]
+) -> None:
+    """A policy that replaces the series description can send two folders to one target."""
+    rectified_dir = tmp_path / "rectify"
+    files = [
+        read_metadata(make_dicom_file(rectified_dir / folder / "x.dcm", SeriesNumber=21))
+        for folder in ("021-A", "021-B")
+    ]
+    policy = Policy(name="p", actions={"SeriesDescription": {"action": "replace", "value": "same"}})
+
+    with pytest.raises(FileExistsError):
+        sanitise(
+            RectifyResult(make_subject(tmp_path), rectified_dir, files),
+            policy=policy,
+            subject_label="sub-1",
+        )
