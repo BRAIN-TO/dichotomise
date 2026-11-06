@@ -75,6 +75,11 @@ def plan_sort(source_dir: Path, out_dir: Path | None = None) -> SortPlan:
                 )
             if target.exists():
                 raise DestinationExistsError(f"Sorting would overwrite an existing file: {target}")
+            for folder in (target.parent, target.parent.parent):  # series and subject folders
+                if folder.exists() and not folder.is_dir():
+                    raise DestinationExistsError(
+                        f"Sorting needs a folder at {folder}, but a file is there."
+                    )
             moves.append((source, target))
         repeats += [p for p, t in plan.target_by_source.items() if plan.sources[t] != p]
     return SortPlan(root, copy, moves, already, repeats, fingerprints)
@@ -83,18 +88,29 @@ def plan_sort(source_dir: Path, out_dir: Path | None = None) -> SortPlan:
 def apply_sort(plan: SortPlan) -> SortResult:
     """Carry out a plan: move the files (or copy them, checking each copy), then confirm."""
     check_sources({source: plan.fingerprints[source] for source, _ in plan.moves})
-    for source, target in plan.moves:
-        if target.exists():  # rename would silently replace it
-            raise DestinationExistsError(f"Sorting would overwrite an existing file: {target}")
-        if plan.copy:
-            copy_planned({target: source}, {})
-            continue
-        target.parent.mkdir(parents=True, exist_ok=True)
-        source.rename(target)
-        after = os.stat(target)
-        # A rename changes the inode's ctime, so compare the other four fields only.
-        seen = (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
-        if seen != plan.fingerprints[source][:4] or source.exists():
-            raise SortError(f"{target} does not match the file that was moved there")
-    count = len(plan.moves)
-    return SortResult(moved=0 if plan.copy else count, copied=count if plan.copy else 0)
+    done = 0
+    try:
+        for source, target in plan.moves:
+            if target.exists():  # rename would silently replace it
+                raise DestinationExistsError(f"Sorting would overwrite an existing file: {target}")
+            if plan.copy:
+                copy_planned({target: source}, {})
+            else:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                source.rename(target)
+                after = os.stat(target)
+                # A rename changes the inode's ctime, so compare the other four fields only.
+                seen = (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+                if seen != plan.fingerprints[source][:4] or source.exists():
+                    raise SortError(f"{target} does not match the file that was moved there")
+            done += 1
+    except OSError as error:
+        finish = (
+            "Remove the partial --out-dir before trying again."
+            if plan.copy
+            else "Run the same command again to finish."
+        )
+        raise SortError(
+            f"Stopped after {done} of {len(plan.moves)} files ({error}). {finish}"
+        ) from error
+    return SortResult(moved=0 if plan.copy else done, copied=done if plan.copy else 0)

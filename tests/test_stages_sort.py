@@ -185,3 +185,40 @@ def test_an_out_dir_inside_the_source_is_refused(
 
     with pytest.raises(SortError, match="outside"):
         plan_sort(source, source / "sorted")
+
+
+def test_a_file_where_a_subject_folder_must_go_is_refused_before_anything_moves(
+    tmp_path: Path, make_dicom_file: Callable[..., Path]
+) -> None:
+    source = tmp_path / "export"
+    _flat_export(source, make_dicom_file)
+    (source / "sub-01_20260101").write_text("a file, not a folder")
+    before = _tree(source)
+
+    with pytest.raises(DestinationExistsError, match="but a file is there"):
+        plan_sort(source)
+
+    assert _tree(source) == before
+
+
+def test_an_os_error_part_way_is_reported_with_a_count_and_the_run_can_be_resumed(
+    tmp_path: Path, make_dicom_file: Callable[..., Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "export"
+    _flat_export(source, make_dicom_file)
+    real_rename = Path.rename
+    calls: list[int] = []
+
+    def flaky_rename(self: Path, target: Path) -> Path:
+        calls.append(1)
+        if len(calls) == 2:
+            raise PermissionError("denied")
+        return real_rename(self, target)
+
+    monkeypatch.setattr(Path, "rename", flaky_rename)
+    with pytest.raises(SortError, match=r"Stopped after 1 of 2 files .* again to finish"):
+        apply_sort(plan_sort(source))
+    monkeypatch.undo()
+
+    assert apply_sort(plan_sort(source)).moved == 1
+    assert plan_sort(source).moves == []
