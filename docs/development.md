@@ -33,9 +33,10 @@ uv run mypy src
 `tests/data/` (real, non-synthetic scan exports used for some tests) is
 gitignored and never committed. It may contain identifying information.
 
-Exports of 200 files or more have their headers read by several processes. The `dichotomise`
-command handles this itself. If you call `dichotomise.pydcm.read.iter_dicom_metadata` from your
-own script, put the call under `if __name__ == "__main__":`.
+Large exports are read, sanitised and re-checked by several processes. The `dichotomise`
+command handles this itself. If you call the Python API from your own script (`run_pipeline`,
+`capture`, `finalise`, the sanitise functions or `iter_dicom_metadata`), put the call under
+`if __name__ == "__main__":`.
 
 ## Citing dichotomise
 

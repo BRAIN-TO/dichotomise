@@ -22,8 +22,11 @@ folder names do not need to be sensible.
 | Flag | Purpose |
 |---|---|
 | `--source-dir` (required) | Raw DICOM directory to process. |
-| `--out-dir` | Parent directory for the timestamped output folder. Required unless `--qc` is used. |
+| `--out-dir` | Parent directory for the timestamped output folder. Required unless `--qc` is used or a sort is done in place. With `--sort` it is the folder the sorted copy is written to. |
 | `--qc` | Audit the source DICOMs in place and print the audit table and NOTES only. Cannot be combined with processing flags. |
+| `--sort` | Sort the DICOMs into `<subject>/<series>/` folders without auditing or archiving. In place when every file sits directly in `--source-dir`; otherwise give `--out-dir`. See [Sort mode](#sort-mode). |
+| `--sort-in-place` | `--sort`, spelled out: always moves files inside `--source-dir`, and cannot be combined with `--out-dir`. |
+| `--dry-run` | With `--sort` or `--sort-in-place`: print the plan and change nothing (not even the `--out-dir`). |
 | `--sanitise` | Replace patient identity before final archiving. This uses `minimal` unless a policy is chosen. |
 | `--sanitise-policy` | JSON policy name: `minimal` (the default), `standard`, `full`, `retain`, `custom`, or a policy you add yourself. Both `custom` and `custom.json` are accepted. Implies `--sanitise`. |
 | `--subj-id` | First numerical replacement ID. For one study, `6` produces `sub-0006`. With several studies, IDs are enumerated automatically as `sub-0006`, `sub-0007`, `sub-0008`, and so on; the CLI logs a warning. |
@@ -42,6 +45,31 @@ or `--mapping-file`; `--new-id` remains intentionally limited to one study.
 mapping-file example. Its keys must match the source DICOM `PatientID` values;
 its values are the exact replacement labels to write. Its `instructions` field
 is ignored by the CLI.
+
+## Sort mode
+
+**TL;DR:** `--sort` puts a folder of DICOMs into `<subject>/<series>/` subfolders; nothing else is done.
+
+```bash
+dichotomise --sort --dry-run --source-dir ./export     # show the plan, change nothing
+dichotomise --sort --source-dir ./export               # move the files inside ./export
+dichotomise --sort --source-dir ./export --out-dir ./sorted   # leave ./export alone, write a copy
+```
+
+Files get the same names as in a full run: `<patient-id>_<study-date>/<series>-<description>/<series>_<instance>_<sop-uid>_eNN.dcm`.
+File names and extensions do not matter for sorting (a file is read if it is DICOM); the sorted
+files always end in `.dcm`.
+
+- **In place** (no `--out-dir`, or `--sort-in-place`) is allowed only when every DICOM is directly in
+  `--source-dir`, or already where it belongs. If the folder already has subfolders, give `--out-dir`.
+  It **moves your originals and makes no source archive**, so run `--dry-run` first.
+- **Safety:** every target is decided and checked before anything moves. A clash (two different files
+  that would get one name), an existing target, or an `--out-dir` inside `--source-dir` stops the run
+  with nothing changed. Files are never overwritten or deleted. A byte-identical repeat is left where it
+  is in place, and written once in a copy. A run that stops part-way can be re-run to finish.
+- A moved file is checked afterwards (same inode, size and modification time, old path gone); a copy is
+  checked by SHA-256 digest.
+- `--sort` cannot be combined with `--qc` or any processing option.
 
 ## Output structure
 
@@ -144,8 +172,9 @@ time, and series UID/number/description/protocol within a DICOM folder.
 
 Compression is always `.tar.gz`; `pigz` is used when it is on `PATH`.
 
-Reading headers, sanitising files and re-checking the finished output use several CPUs automatically
-once a subject has 200 or more files (no flag; the container's CPU limit is respected). Subjects are
+Several CPUs are used automatically, with no flag and respecting a container's CPU limit: reading headers
+once the export has 200 or more files, and sanitising and re-checking the finished output once a subject
+has 200 or more files (review files are sanitised in a pool only at 200 or more review files). Subjects are
 still processed one after another, and the output is the same as a single-process run.
 
 Source files are checked for changes while their headers are captured and

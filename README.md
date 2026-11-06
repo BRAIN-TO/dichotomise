@@ -30,7 +30,8 @@ addresses each problem as follows:
 |---|---|
 | Repeated filenames hide file identity and can collide when files are moved. | Uses the SOP Instance UID from the header in each rectified filename. |
 | A file's series folder can contradict its header. | Audits series metadata and sends files that disagree with their folder's majority to review. |
-| A repeated export can add byte-identical files. | Detects byte-identical copies within each source folder and sends later copies to review. |
+| A repeated export can add byte-identical files. | Detects byte-identical copies within each source folder and sends later copies to review. A copy in another folder is written once, not twice. |
+| Two different files can claim one SOP Instance UID. | Sends every file in the group to review as a `sop_conflict`, never as a duplicate. |
 | Processing can obscure the original export. | Archives the untouched source DICOMs and records manifests before processing. |
 
 Two examples prompted this work. One Series 22 image was found in a Series 21
@@ -69,6 +70,15 @@ dichotomise --source-dir ./study/sub-001 --out-dir ./dichotomise-runs
 dichotomise --qc --source-dir ./study/sub-001
 ```
 
+To only sort a folder of DICOMs into `<subject>/<series>/` subfolders, use `--sort`. It works in
+place when every file sits directly in the source folder (no `--out-dir`); otherwise give `--out-dir`
+to sort a copy. Add `--dry-run` first to see the plan; in place **moves your originals**.
+
+```bash
+dichotomise --sort --dry-run --source-dir ./study/sub-001
+dichotomise --sort --source-dir ./study/sub-001
+```
+
 Use `--sanitise` to apply a policy to processed and review files. Choose the
 policy carefully: descriptions can contain identifying text, and the
 untouched **source archive retains the original identifiers**. See the
@@ -86,7 +96,8 @@ contents and reports.
 - [Usage and output](docs/usage.md): options, archives, manifests and reports.
 - [Workflow](docs/workflow.md): the processing stages and their checks.
 - [Sanitisation policies](docs/sanitise-policies.md): policy actions and customisation.
-- [Development and citation](docs/development.md) — project layout and checks.
+- [Development and citation](docs/development.md): project layout and checks.
+- [Changelog](CHANGELOG.md): what changed in each release.
 
 ## Citation and licence
 
