@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -35,6 +36,7 @@ from dichotomise.stages.audit import (
     audit_directory,
     folder_notes,
 )
+from dichotomise.stages.sort import SortPlan, apply_sort, plan_sort
 from dichotomise.utils.archive import pigz_path
 from dichotomise.utils.console import console, error, success
 
@@ -55,6 +57,11 @@ rich_click_config.OPTION_GROUPS = {
         {
             "name": "QC mode",
             "options": ["--qc"],
+            "title_style": "bold yellow",
+        },
+        {
+            "name": "Sort mode",
+            "options": ["--sort", "--sort-in-place", "--dry-run"],
             "title_style": "bold yellow",
         },
         {
@@ -451,9 +458,7 @@ def _load_mapping_file(path: Path) -> dict[str, str]:
     return loaded_mapping
 
 
-def _run_qc(
-    source_dir: Path,
-    out_dir: Path | None,
+def _processing_options_given(
     sanitise: bool,
     sanitise_policy: str | None,
     subject_id: str | None,
@@ -463,21 +468,26 @@ def _run_qc(
     mapping_file: Path | None,
     keep_working_files: bool,
     keep_unzipped: bool,
-) -> None:
-    """Print an in-place audit after ensuring no processing option was selected."""
-    incompatible_options = (
-        out_dir is not None,
-        sanitise,
-        sanitise_policy is not None,
-        subject_id is not None,
-        new_id is not None,
-        random_name,
-        bool(mapping),
-        mapping_file is not None,
-        keep_working_files,
-        keep_unzipped,
+) -> bool:
+    """Whether any option that only a full processing run uses was given."""
+    return any(
+        (
+            sanitise,
+            sanitise_policy is not None,
+            subject_id is not None,
+            new_id is not None,
+            random_name,
+            bool(mapping),
+            mapping_file is not None,
+            keep_working_files,
+            keep_unzipped,
+        )
     )
-    if any(incompatible_options):
+
+
+def _run_qc(source_dir: Path, out_dir: Path | None, processing_given: bool) -> None:
+    """Print an in-place audit after ensuring no processing option was selected."""
+    if processing_given or out_dir is not None:
         raise click.UsageError(
             "--qc only accepts --source-dir and cannot be combined with processing options."
         )
@@ -491,6 +501,61 @@ def _run_qc(
         raise SystemExit(1) from failure
     total_elapsed = _format_elapsed(monotonic() - qc_started)
     success(f"QC complete in {total_elapsed}; no files or folders were created.")
+
+
+def _check_mode_flags(qc: bool, sorting: bool, dry_run: bool) -> None:
+    """Refuse mode flags that cannot go together."""
+    if sorting and qc:
+        raise click.UsageError("--sort cannot be combined with --qc.")
+    if dry_run and not sorting:
+        raise click.UsageError("--dry-run only works with --sort or --sort-in-place.")
+
+
+def _count_files(count: int) -> str:
+    return f"{count} file" if count == 1 else f"{count} files"
+
+
+def _print_sort_plan(plan: SortPlan) -> None:
+    """List each folder the sort would fill, then the files it leaves alone."""
+    folders = Counter(target.parent.relative_to(plan.root) for _, target in plan.moves)
+    for folder in sorted(folders):
+        console.print(f"  {escape(str(folder))}: {_count_files(folders[folder])}")
+    if plan.in_place_already:
+        console.print(f"  {_count_files(len(plan.in_place_already))} already in place")
+    if plan.repeats:
+        what = "written once" if plan.copy else "left where they are"
+        console.print(f"  {_count_files(len(plan.repeats))} byte-identical repeats, {what}")
+
+
+def _run_sort(
+    source_dir: Path, out_dir: Path | None, *, dry_run: bool, in_place_flag: bool
+) -> None:
+    """Sort the source into subject and series folders, in place or as a copy under `out_dir`."""
+    if in_place_flag and out_dir is not None:
+        raise click.UsageError("--sort-in-place cannot be combined with --out-dir.")
+    _print_banner(source_dir)
+    started = monotonic()
+    try:
+        plan = _run_with_elapsed_ticker(started, lambda: plan_sort(source_dir, out_dir))
+        _print_sort_plan(plan)
+        if dry_run:
+            success(
+                f"Dry run: nothing was changed ({_count_files(len(plan.moves))} would be sorted)."
+            )
+            return
+        if not plan.moves:
+            success("Nothing to move: the files are already sorted.")
+            return
+        result = apply_sort(plan)
+    except DichotomiseError as failure:
+        error(str(failure))
+        raise SystemExit(1) from failure
+    verb = (
+        f"Copied {_count_files(result.copied)}"
+        if plan.copy
+        else f"Moved {_count_files(result.moved)}"
+    )
+    success(f"{verb} in {_format_elapsed(monotonic() - started)}.")
 
 
 def _prepare_processing_options(
@@ -566,7 +631,10 @@ def _prepare_processing_options(
     "--out-dir",
     type=click.Path(path_type=Path, file_okay=False),
     panel="Output (standard runs)",
-    help="Output directory for dichotomised results; required unless --qc is used.",
+    help=(
+        "Output directory for dichotomised results; required unless --qc is used or a sort "
+        "is done in place."
+    ),
 )
 @click.option(
     "--qc",
@@ -575,6 +643,30 @@ def _prepare_processing_options(
     help=(
         "Audit source DICOMs in place and print the audit table and NOTES only; never write files."
     ),
+)
+@click.option(
+    "--sort",
+    is_flag=True,
+    panel="Sort mode",
+    help=(
+        "Sort the DICOMs into <subject>/<series>/ folders. In place when they all sit directly "
+        "in --source-dir; otherwise give --out-dir to sort a copy."
+    ),
+)
+@click.option(
+    "--sort-in-place",
+    is_flag=True,
+    panel="Sort mode",
+    help=(
+        "Like --sort, spelled out: move the files inside --source-dir (never with --out-dir). "
+        "This moves your originals and makes no archive; try --dry-run first."
+    ),
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    panel="Sort mode",
+    help="With --sort or --sort-in-place: show what would happen and change nothing.",
 )
 @click.option(
     "--sanitise",
@@ -647,6 +739,9 @@ def cli(
     source_dir: Path,
     out_dir: Path | None,
     qc: bool,
+    sort: bool,
+    sort_in_place: bool,
+    dry_run: bool,
     sanitise: bool,
     sanitise_policy: str | None,
     subject_id: str | None,
@@ -658,20 +753,28 @@ def cli(
     keep_unzipped: bool,
 ) -> None:
     """Run the standard, end-to-end dichotomise pipeline."""
+    processing_given = _processing_options_given(
+        sanitise,
+        sanitise_policy,
+        subject_id,
+        new_id,
+        random_name,
+        mapping,
+        mapping_file,
+        keep_working_files,
+        keep_unzipped,
+    )
+    sorting = sort or sort_in_place
+    _check_mode_flags(qc, sorting, dry_run)
     if qc:
-        _run_qc(
-            source_dir,
-            out_dir,
-            sanitise,
-            sanitise_policy,
-            subject_id,
-            new_id,
-            random_name,
-            mapping,
-            mapping_file,
-            keep_working_files,
-            keep_unzipped,
-        )
+        _run_qc(source_dir, out_dir, processing_given)
+        return
+    if sorting:
+        if processing_given:
+            raise click.UsageError(
+                "--sort only accepts --source-dir, --out-dir and --dry-run, not processing options."
+            )
+        _run_sort(source_dir, out_dir, dry_run=dry_run, in_place_flag=sort_in_place)
         return
 
     if out_dir is None:

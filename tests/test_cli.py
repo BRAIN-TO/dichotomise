@@ -500,3 +500,117 @@ def test_cli_qc_labels_a_subject_without_a_patient_id(
 
     assert result.exit_code == 0, result.output
     assert "no PatientID" in result.output
+
+
+def _sort_source(source: Path, make_dicom_file: Callable[..., Path]) -> None:
+    """Two series dumped flat into `source`, named like a scanner export."""
+    for number, series in enumerate((21, 22), start=1):
+        make_dicom_file(
+            source / f"IM{number:04d}",
+            StudyInstanceUID="1.2.9.1",
+            SeriesInstanceUID=f"1.2.9.{series}",
+            SeriesNumber=series,
+            SeriesDescription="DWI",
+            SOPInstanceUID=f"1.2.3.{number}",
+        )
+
+
+def _files(root: Path) -> list[str]:
+    return sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file())
+
+
+@pytest.mark.parametrize("flag", ["--sort", "--sort-in-place"])
+def test_cli_sort_moves_a_flat_folder_in_place_without_an_out_dir(
+    tmp_path: Path, make_dicom_file: Callable[..., Path], flag: str
+) -> None:
+    source = tmp_path / "export"
+    _sort_source(source, make_dicom_file)
+
+    result = CliRunner().invoke(cli, [flag, "--source-dir", str(source)])
+
+    assert result.exit_code == 0, result.output
+    assert _files(source) == [
+        "sub-01_20260101/021-DWI/021_0001_1.2.3.1_e01.dcm",
+        "sub-01_20260101/022-DWI/022_0001_1.2.3.2_e01.dcm",
+    ]
+    assert "Moved 2 files" in result.output
+
+
+@pytest.mark.parametrize("flag", ["--sort", "--sort-in-place"])
+def test_cli_sort_dry_run_shows_the_plan_and_changes_nothing(
+    tmp_path: Path, make_dicom_file: Callable[..., Path], flag: str
+) -> None:
+    source = tmp_path / "export"
+    _sort_source(source, make_dicom_file)
+    before = _files(source)
+
+    result = CliRunner().invoke(cli, [flag, "--dry-run", "--source-dir", str(source)])
+
+    assert result.exit_code == 0, result.output
+    assert _files(source) == before
+    assert "Dry run" in result.output
+    assert "021-DWI" in result.output
+
+
+def test_cli_sort_dry_run_does_not_create_the_out_dir(
+    tmp_path: Path, make_dicom_file: Callable[..., Path]
+) -> None:
+    source, out = tmp_path / "export", tmp_path / "sorted"
+    _sort_source(source, make_dicom_file)
+
+    result = CliRunner().invoke(
+        cli, ["--sort", "--dry-run", "--source-dir", str(source), "--out-dir", str(out)]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert not out.exists()
+
+
+def test_cli_sort_with_an_out_dir_copies_and_leaves_the_source_alone(
+    tmp_path: Path, make_dicom_file: Callable[..., Path]
+) -> None:
+    source, out = tmp_path / "export", tmp_path / "sorted"
+    _sort_source(source, make_dicom_file)
+
+    result = CliRunner().invoke(cli, ["--sort", "--source-dir", str(source), "--out-dir", str(out)])
+
+    assert result.exit_code == 0, result.output
+    assert _files(source) == ["IM0001", "IM0002"]
+    assert len(_files(out)) == 2
+    assert "Copied 2 files" in result.output
+
+
+def test_cli_sort_in_place_asks_for_an_out_dir_when_the_source_has_subfolders(
+    tmp_path: Path, make_dicom_file: Callable[..., Path]
+) -> None:
+    source = tmp_path / "export"
+    make_dicom_file(source / "old" / "1.dcm", StudyInstanceUID="1.2.9.1")
+
+    result = CliRunner().invoke(cli, ["--sort", "--source-dir", str(source)])
+
+    assert result.exit_code != 0
+    assert "--out-dir" in unstyle(result.output)
+    assert _files(source) == ["old/1.dcm"]
+
+
+@pytest.mark.parametrize(
+    ("args", "message"),
+    [
+        (["--sort-in-place", "--out-dir", "OUT"], "--sort-in-place cannot be combined"),
+        (["--dry-run"], "--dry-run only works with"),
+        (["--sort", "--qc"], "--sort cannot be combined with --qc"),
+        (["--sort", "--sanitise"], "--sort only accepts"),
+        (["--sort", "--keep-unzipped"], "--sort only accepts"),
+    ],
+)
+def test_cli_sort_rejects_options_that_do_not_belong_with_it(
+    tmp_path: Path, args: list[str], message: str
+) -> None:
+    source = tmp_path / "export"
+    source.mkdir()
+    args = [str(tmp_path / "out") if a == "OUT" else a for a in args]
+
+    result = CliRunner().invoke(cli, ["--source-dir", str(source), *args])
+
+    assert result.exit_code != 0
+    assert message in unstyle(result.output)
