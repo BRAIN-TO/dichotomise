@@ -73,14 +73,14 @@ def _verify_uncompressed_pixel_data(path: Path, dataset: pydicom.Dataset) -> Non
 
 
 def _verify_file(
-    task: tuple[Path, tuple[object, ...] | None, tuple[str, str] | None],
+    task: tuple[Path, tuple[object, ...] | None, tuple[str, str] | None, str | None],
 ) -> None:
     """Re-read one finished file and check it; a module-level function so a pool can run it.
 
-    `task` is the path with its recorded pixel fingerprint and identity, each None when that
-    check is not wanted. Raises `FinaliseVerificationError` on the first thing wrong.
+    `task` is the path with its recorded pixel fingerprint, identity and source digest, each
+    None when that check is not wanted. Raises `FinaliseVerificationError` on the first thing wrong.
     """
-    path, expected_pixels, expected_identity = task
+    path, expected_pixels, expected_identity, expected_digest = task
     try:
         dataset = pydicom.dcmread(path, force=False)
         _metadata_from_dataset(dataset, path)
@@ -93,6 +93,8 @@ def _verify_file(
         raise FinaliseVerificationError(f"Pixel data differs from its source: {path}")
     if expected_identity is not None:
         _verify_identity(dataset, path, expected_identity)
+    if expected_digest is not None and file_digest(path) != expected_digest:
+        raise FinaliseVerificationError(f"Copied file differs from its source: {path}")
 
 
 def _verify_output_tree(
@@ -100,6 +102,7 @@ def _verify_output_tree(
     output_dir: Path,
     expected_pixels: dict[Path, tuple[object, ...]] | None = None,
     expected_identities: dict[Path, tuple[str, str]] | None = None,
+    expected_digests: dict[Path, str] | None = None,
 ) -> None:
     """Independently re-check the finished output tree before it is archived.
 
@@ -122,6 +125,7 @@ def _verify_output_tree(
                 path,
                 None if expected_pixels is None else expected_pixels[path],
                 None if expected_identities is None else expected_identities[path],
+                None if expected_digests is None else expected_digests[path],
             )
             for path in found_files
         ],
@@ -178,19 +182,21 @@ def finalise(
     expected_files = (
         sanitise_result.files if sanitise_result else [item.path for item in rectify_result.files]
     )
-    _verify_output_tree(expected_files, source_dir, expected_pixels, expected_identities)
-
-    if sanitise_result is None:
+    expected_digests = None
+    if sanitise_result is None:  # copies must equal their sources, which finalise knows by digest
         source_of = {target: source for source, target in rectify_result.target_by_source.items()}
+        expected_digests = {}
         for item in rectify_result.files:
             original = source_of.get(item.path)
             if original is None:
                 raise FinaliseVerificationError(f"No source provenance for {item.path}")
             if original not in source_digests:
                 raise FinaliseVerificationError(f"No source digest for {original}")
-            if file_digest(original, source_digests) != file_digest(item.path):
-                raise FinaliseVerificationError(f"Copied file differs from its source: {item.path}")
-    elif expected_pixels is None:
+            expected_digests[item.path] = source_digests[original]
+    _verify_output_tree(
+        expected_files, source_dir, expected_pixels, expected_identities, expected_digests
+    )
+    if sanitise_result is not None and expected_pixels is None:
         for item, output in zip(rectify_result.files, sanitise_result.files, strict=True):
             source = (
                 rectify_result.sources[item.path]
