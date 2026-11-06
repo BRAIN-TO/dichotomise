@@ -408,3 +408,12 @@ def test_a_uid_element_stored_after_the_pixel_data_is_still_remapped(
     written = pydicom.dcmread(result.files[0])
     assert written[0x7FE11010].value != "1.2.5.5"
     assert written[0x7FE11010].value == cache["uid:1.2.5.5"]
+
+
+def test_a_policy_with_nothing_to_generate_needs_no_advance_values() -> None:
+    policy = Policy(name="p", actions={"InstitutionName": {"action": "remove"}})
+
+    assert (
+        fill_replacement_cache([Path("/missing.dcm")], policy, subject_label="s", scan_date="")
+        == {}
+    )

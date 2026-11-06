@@ -270,6 +270,7 @@ _KEPT_UID_KEYWORDS = frozenset(
 )
 _REGISTRY_UID_PREFIX = "1.2.840.10008."
 _NEW_UID_MARK = "uid-new:"
+_GENERATING_ACTIONS = frozenset({"regenerate", "scramble_date", "random_name"})
 
 
 def _new_uid_for(original: str, replacement_cache: MutableMapping[str, str]) -> str:
@@ -520,6 +521,8 @@ def fill_replacement_cache(
     `uid-new:` entries are then rebuilt from the winners. Every file is later sanitised against
     this one table, so the output cannot depend on file order or on which worker saw a file first.
     """
+    if not any(found["action"] in _GENERATING_ACTIONS for found in policy.actions.values()):
+        return FrozenCache()  # nothing to generate, so there is nothing to decide in advance
     parts = _parallel_map(
         _fill_one,
         paths,
