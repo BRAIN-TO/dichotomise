@@ -2,7 +2,7 @@
 
 ## v2.9.0
 
-Integrity and provenance checks, plus speed-ups. Sanitised and archived output is unchanged for inputs that
+Integrity and provenance checks, speed-ups, and a new sort mode (`--sort`). Sanitised and archived output is unchanged for inputs that
 pass the checks; inputs that fail one now stop the run instead of being processed.
 
 - Detect source files that change during capture or processing, and carry source provenance through to finalisation.

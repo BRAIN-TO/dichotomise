@@ -66,7 +66,7 @@ files always end in `.dcm`.
 - **Safety:** every target is decided and checked before anything moves. A clash (two different files
   that would get one name), an existing target, or an `--out-dir` inside `--source-dir` stops the run
   with nothing changed. Files are never overwritten or deleted. A byte-identical repeat is left where it
-  is in place, and written once in a copy. A run that stops part-way can be re-run to finish.
+  is in place, and written once in a copy. An in-place run that stops part-way can be re-run to finish; a copy cannot (its targets already exist), so remove the partial `--out-dir` first.
 - A moved file is checked afterwards (same inode, size and modification time, old path gone); a copy is
   checked by SHA-256 digest.
 - `--sort` cannot be combined with `--qc` or any processing option.
